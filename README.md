@@ -137,6 +137,50 @@ python audio_transcriber.py recording.m4a -o transcript.txt --split-parts 4
 
 The model is downloaded automatically on first use and cached locally.
 
+## GPU Acceleration (Optional)
+
+Whisper runs on CPU by default. Installing PyTorch with GPU support significantly speeds up transcription — no code changes needed, Whisper detects GPU automatically.
+
+### Speed comparison (50 min audio, `small` model)
+
+| Setup | Approximate time |
+|-------|-----------------|
+| CPU only | 15–30 min |
+| Apple Silicon (M1/M2/M3/M4) | 5–10 min |
+| NVIDIA GPU (CUDA) | 2–5 min |
+
+### macOS (Apple Silicon)
+
+PyTorch uses Metal (MPS) acceleration automatically:
+
+```bash
+pip install torch torchvision torchaudio
+```
+
+### Windows / Linux with NVIDIA GPU
+
+Install PyTorch with CUDA support. Pick the command matching your CUDA version (check with `nvidia-smi`):
+
+**CUDA 12.8:**
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+```
+
+**CUDA 12.6:**
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+```
+
+> Check [pytorch.org/get-started/locally](https://pytorch.org/get-started/locally/) for the latest install commands if the above URLs stop working.
+
+### Verify GPU is detected
+
+```python
+import torch
+print(torch.cuda.is_available())              # True = NVIDIA GPU
+print(torch.backends.mps.is_available())      # True = Apple Silicon
+```
+
 ## How It Works
 
 ### PDF Cleaner Pipeline
