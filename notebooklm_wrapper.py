@@ -115,6 +115,10 @@ def login():
             user_data_dir=str(profile_dir),
             channel="chrome",
             headless=False,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+            ],
+            ignore_default_args=["--enable-automation"],
         )
         page = browser.pages[0] if browser.pages else browser.new_page()
         page.goto("https://notebooklm.google.com/")
