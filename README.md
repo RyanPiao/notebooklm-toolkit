@@ -43,7 +43,7 @@ brew install ffmpeg
 
 ```bash
 # Clone the repo
-git clone https://github.com/YOUR_USERNAME/notebooklm-toolkit.git
+git clone https://github.com/RyanPiao/notebooklm-toolkit.git
 cd notebooklm-toolkit
 
 # Create a virtual environment (recommended)
