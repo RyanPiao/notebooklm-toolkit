@@ -215,7 +215,7 @@ class NotebookLMTab:
         ttk.Button(nb_btn_row, text="Create", command=self._create_notebook, width=6).pack(side="left", padx=2)
         ttk.Button(nb_btn_row, text="Delete", command=self._delete_notebook, width=6).pack(side="left", padx=2)
 
-        self.nb_listbox = tk.Listbox(nb_frame, height=6, exportselection=False)
+        self.nb_listbox = tk.Listbox(nb_frame, height=5, exportselection=False)
         self.nb_listbox.pack(fill="x", pady=(5, 0))
         self.nb_listbox.bind("<<ListboxSelect>>", self._on_notebook_select)
 
@@ -230,7 +230,7 @@ class NotebookLMTab:
         ttk.Button(src_btn_row, text="Add Text", command=self._add_source_text, width=8).pack(side="left", padx=2)
         ttk.Button(src_btn_row, text="Delete", command=self._delete_source, width=6).pack(side="left", padx=2)
 
-        self.src_listbox = tk.Listbox(src_frame, height=6, exportselection=False)
+        self.src_listbox = tk.Listbox(src_frame, height=4, exportselection=False)
         self.src_listbox.pack(fill="both", expand=True, pady=(5, 0))
 
         # Artifacts section
@@ -958,11 +958,35 @@ class NotebookLMTab:
 
     def _get_current_pos_ms(self):
         """Get current playback position in milliseconds."""
-        import pygame
         if self._playing and not self._paused:
             elapsed = (time.time() - self._play_start_time) * 1000 * self._playback_speed
             return min(self._play_offset_ms + elapsed, self._audio_length_ms)
         return self._play_offset_ms
+
+    @staticmethod
+    def _ffmpeg_convert(input_path, output_path, speed=1.0):
+        """Convert audio to WAV using ffmpeg, optionally with speed change."""
+        import subprocess
+        cmd = ["ffmpeg", "-y", "-i", input_path]
+        if speed != 1.0:
+            # atempo filter for speed change (preserves pitch)
+            # atempo only supports 0.5–2.0, chain filters for extremes
+            cmd += ["-filter:a", f"atempo={speed}"]
+        cmd += ["-ar", "44100", "-ac", "2", output_path]
+        result = subprocess.run(cmd, capture_output=True, timeout=120)
+        if result.returncode != 0:
+            raise RuntimeError(result.stderr.decode(errors="replace")[-200:])
+
+    @staticmethod
+    def _ffprobe_duration_ms(file_path):
+        """Get audio duration in milliseconds using ffprobe."""
+        import subprocess
+        cmd = ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+               "-of", "default=noprint_wrappers=1:nokey=1", file_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0 and result.stdout.strip():
+            return int(float(result.stdout.strip()) * 1000)
+        return 0
 
     def _play_selected_artifact(self):
         """Download and play the selected audio artifact."""
@@ -979,27 +1003,48 @@ class NotebookLMTab:
             messagebox.showwarning("Not audio", "Select an audio artifact to play.")
             return
 
-        # Check if already downloaded to cache
         safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in artifact.title)
-        cache_path = self._speed_cache_dir / f"{artifact.id}_{safe_title}.mp3"
+        raw_path = self._speed_cache_dir / f"{artifact.id}_{safe_title}.raw"
+        wav_path = self._speed_cache_dir / f"{artifact.id}_{safe_title}.wav"
 
-        if cache_path.exists():
-            self._load_and_play(str(cache_path), artifact.id, artifact.title)
+        # If WAV already cached, play immediately
+        if wav_path.exists():
+            self._load_and_play(str(wav_path), artifact.id, artifact.title)
             return
 
-        # Download to cache
+        # If raw downloaded but not converted, convert
+        if raw_path.exists():
+            self._convert_and_play(str(raw_path), str(wav_path), artifact.id, artifact.title)
+            return
+
+        # Download raw file first
         self.status_var.set(f"Downloading audio: {artifact.title}...")
         import notebooklm_wrapper as w
 
         def _done(path):
-            self.status_var.set(f"Downloaded. Loading player...")
-            self._load_and_play(str(cache_path), artifact.id, artifact.title)
+            self.status_var.set("Converting audio...")
+            self._convert_and_play(str(raw_path), str(wav_path), artifact.id, artifact.title)
 
         _run_async(self.frame, w.download_artifact,
-                   args=(self.selected_nb_id, "audio", str(cache_path)),
+                   args=(self.selected_nb_id, "audio", str(raw_path)),
                    kwargs={"artifact_id": artifact.id},
                    on_done=_done,
                    on_error=lambda e: self.status_var.set(f"Download error: {e}"))
+
+    def _convert_and_play(self, raw_path, wav_path, audio_id, title):
+        """Convert raw audio to WAV in background, then play."""
+        def _do():
+            self._ffmpeg_convert(raw_path, wav_path)
+            return wav_path
+
+        def _done(path):
+            self.status_var.set("Playing...")
+            self._load_and_play(path, audio_id, title)
+
+        def _err(e):
+            self.status_var.set(f"Convert error: {e}")
+
+        _run_async(self.frame, _do, on_done=_done, on_error=_err)
 
     def _load_and_play(self, audio_path, audio_id, title):
         """Load an audio file into the player and start playback."""
@@ -1012,54 +1057,36 @@ class NotebookLMTab:
         self._current_audio_path = audio_path
         self._current_audio_id = audio_id
 
-        # Get audio duration
-        try:
-            from pydub import AudioSegment
-            audio = AudioSegment.from_file(audio_path)
-            self._audio_length_ms = len(audio)
-        except Exception:
-            self._audio_length_ms = 0
+        # Get audio duration via ffprobe
+        self._audio_length_ms = self._ffprobe_duration_ms(audio_path)
 
         # Restore saved position
         saved = self._playback_positions.get(audio_id, {})
         saved_pos = saved.get("position_ms", 0)
         saved_speed = saved.get("speed", 1.0)
 
-        # Set speed from saved state
         self._playback_speed = saved_speed
         self._speed_var.set(f"{saved_speed}x")
-
-        # Update UI
         self._player_title_var.set(title)
 
         # Start playback from saved position
         self._start_playback_at(saved_pos)
 
-    def _get_speed_audio_path(self, speed):
-        """Get path to speed-adjusted audio file. Uses cache."""
+    def _get_speed_wav_path(self, speed):
+        """Get path to speed-adjusted WAV file. Uses ffmpeg + cache."""
         if not self._current_audio_path:
             return None
-
         if speed == 1.0:
             return self._current_audio_path
 
-        # Check cache
         base = Path(self._current_audio_path).stem
-        cache_key = f"{base}_speed{speed:.2f}.mp3"
-        cache_path = self._speed_cache_dir / cache_key
-
+        cache_path = self._speed_cache_dir / f"{base}_speed{speed:.2f}.wav"
         if cache_path.exists():
             return str(cache_path)
 
-        # Generate speed-adjusted file
+        # Convert with ffmpeg (atempo preserves pitch)
         try:
-            from pydub import AudioSegment
-            audio = AudioSegment.from_file(self._current_audio_path)
-            # Change speed by adjusting frame rate (changes pitch too — acceptable)
-            adjusted = audio._spawn(audio.raw_data, overrides={
-                "frame_rate": int(audio.frame_rate * speed)
-            }).set_frame_rate(audio.frame_rate)
-            adjusted.export(str(cache_path), format="mp3")
+            self._ffmpeg_convert(self._current_audio_path, str(cache_path), speed)
             return str(cache_path)
         except Exception as e:
             self.status_var.set(f"Speed change failed: {e}")
@@ -1070,14 +1097,17 @@ class NotebookLMTab:
         import pygame
 
         speed = self._playback_speed
-        audio_path = self._get_speed_audio_path(speed)
+        audio_path = self._get_speed_wav_path(speed)
         if not audio_path:
             return
 
         try:
             pygame.mixer.music.load(audio_path)
-            # For speed-adjusted files, the position needs adjustment
-            start_sec = (position_ms / 1000.0) / speed if speed != 1.0 else position_ms / 1000.0
+            # For speed-adjusted files, real position is different
+            if speed != 1.0:
+                start_sec = (position_ms / 1000.0) / speed
+            else:
+                start_sec = position_ms / 1000.0
             pygame.mixer.music.play(start=start_sec)
 
             self._playing = True
@@ -1086,7 +1116,6 @@ class NotebookLMTab:
             self._play_start_time = time.time()
             self._play_btn.config(text="Pause")
 
-            # Start progress updater
             self._update_player_progress()
         except Exception as e:
             self.status_var.set(f"Playback error: {e}")
@@ -1096,12 +1125,10 @@ class NotebookLMTab:
         import pygame
 
         if not self._current_audio_path:
-            # Try to play selected artifact
             self._play_selected_artifact()
             return
 
         if not self._playing:
-            # Resume or start
             if self._paused:
                 pygame.mixer.music.unpause()
                 self._playing = True
@@ -1112,7 +1139,6 @@ class NotebookLMTab:
             else:
                 self._start_playback_at(self._play_offset_ms)
         else:
-            # Pause
             self._save_current_position()
             self._play_offset_ms = self._get_current_pos_ms()
             pygame.mixer.music.pause()
@@ -1129,7 +1155,6 @@ class NotebookLMTab:
                 pygame.mixer.music.stop()
             except Exception:
                 pass
-
         self._playing = False
         self._paused = False
         self._play_btn.config(text="Play")
@@ -1138,10 +1163,8 @@ class NotebookLMTab:
         """Handle seek bar interaction."""
         if not self._current_audio_path or self._audio_length_ms == 0:
             return
-
         pct = float(value)
         target_ms = (pct / 100.0) * self._audio_length_ms
-
         if self._playing:
             self._start_playback_at(target_ms)
         else:
@@ -1155,20 +1178,37 @@ class NotebookLMTab:
             new_speed = float(speed_str)
         except ValueError:
             return
-
         if new_speed == self._playback_speed:
             return
 
-        # Save current position at old speed
         current_pos = self._get_current_pos_ms()
+        was_playing = self._playing
+
+        # Stop current playback
+        if self._player_initialized:
+            try:
+                import pygame
+                pygame.mixer.music.stop()
+            except Exception:
+                pass
+
+        self._playing = False
+        self._paused = False
         self._playback_speed = new_speed
+        self._play_offset_ms = current_pos
 
-        if self._playing:
-            self._start_playback_at(current_pos)
+        # Generate speed-adjusted file in background, then resume
+        if was_playing:
+            self.status_var.set(f"Adjusting speed to {new_speed}x...")
+            def _do():
+                return self._get_speed_wav_path(new_speed)
+            def _done(path):
+                self.status_var.set(f"Playing at {new_speed}x")
+                self._start_playback_at(current_pos)
+            _run_async(self.frame, _do, on_done=_done,
+                       on_error=lambda e: self.status_var.set(f"Speed error: {e}"))
         else:
-            self._play_offset_ms = current_pos
-
-        self._save_current_position()
+            self._save_current_position()
 
     def _update_player_progress(self):
         """Periodically update the progress bar and time display."""
@@ -1185,20 +1225,15 @@ class NotebookLMTab:
             self._play_btn.config(text="Play")
             self._player_progress_var.set(0)
             self._update_time_label(0)
-            # Clear saved position (finished)
             if self._current_audio_id in self._playback_positions:
                 del self._playback_positions[self._current_audio_id]
                 self._save_playback_state()
             return
 
-        # Update progress bar
         if self._audio_length_ms > 0:
             pct = (pos_ms / self._audio_length_ms) * 100
             self._player_progress_var.set(min(pct, 100))
-
         self._update_time_label(pos_ms)
-
-        # Schedule next update
         self.frame.after(500, self._update_player_progress)
 
     def _update_time_label(self, pos_ms):
