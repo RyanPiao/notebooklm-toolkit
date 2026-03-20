@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+venv/
+.venv/
+
+# Whisper model cache
+*.pt
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Output directories
+cleaned_pngs/
+output/
+
+# Large binaries
+*.exe
+
+# Reference code (not part of this project)
+notebooklm-watermark-remover/
+transcribe-m4a-to-text-main/
+clean_pdf.ipynb
