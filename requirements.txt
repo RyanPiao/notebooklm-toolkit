@@ -3,7 +3,7 @@ Pillow>=10.0.0
 opencv-python-headless>=4.8.0
 numpy>=1.24.0
 openai-whisper>=20231117
-pygame>=2.5.0
+pygame-ce>=2.5.0
 
 # Optional: NotebookLM integration (pip install notebooklm-py[browser])
 # notebooklm-py[browser]>=0.3.4
