@@ -168,21 +168,22 @@ class NotebookLMTab:
         self.conversation_id = None
 
         # Audio player state
-        self._player_initialized = False
-        self._playing = False
-        self._paused = False
-        self._current_audio_path = None
-        self._current_audio_id = None
-        self._audio_length_ms = 0
-        self._play_start_time = 0       # time.time() when playback started
-        self._play_offset_ms = 0        # offset in ms from start
-        self._playback_speed = 1.0
-        self._speed_cache_dir = Path(tempfile.gettempdir()) / "nlm_audio_cache"
-        self._speed_cache_dir.mkdir(exist_ok=True)
+        self._ap_initialized = False
+        self._ap_playing = False
+        self._ap_paused = False
+        self._ap_wav_path = None       # currently loaded WAV
+        self._ap_audio_id = None       # artifact id of loaded audio
+        self._ap_audio_title = None
+        self._ap_duration_ms = 0
+        self._ap_seek_offset_ms = 0    # offset passed to play(start=)
+        self._ap_speed = 1.0
+        self._ap_cache = Path(tempfile.gettempdir()) / "nlm_audio_cache"
+        self._ap_cache.mkdir(exist_ok=True)
+        self._ap_updating = False      # prevent seek feedback loop
 
         # Playback position memory
-        self._playback_state_file = Path(__file__).parent / "playback_state.json"
-        self._playback_positions = self._load_playback_state()
+        self._ap_state_file = Path(__file__).parent / "playback_state.json"
+        self._ap_positions = self._load_playback_state()
 
         self._build_ui()
 
@@ -873,406 +874,373 @@ class NotebookLMTab:
     # ------------------------------------------------------------ #
 
     def _build_audio_player(self, parent):
-        """Build the audio player panel — full width bar at the bottom."""
-        player_frame = ttk.LabelFrame(parent, text="Audio Player", padding=5)
-        player_frame.pack(fill="x", pady=(5, 0))
+        """Build the audio player — full width bar at the bottom."""
+        pf = ttk.LabelFrame(parent, text="Audio Player", padding=5)
+        pf.pack(fill="x", pady=(5, 0))
 
-        # Row 1: Title + Time
-        top_row = ttk.Frame(player_frame)
-        top_row.pack(fill="x")
+        # Row 1: title + time
+        row1 = ttk.Frame(pf)
+        row1.pack(fill="x")
+        self._ap_title_var = tk.StringVar(value="Double-click an [audio] artifact to play")
+        ttk.Label(row1, textvariable=self._ap_title_var).pack(side="left")
+        self._ap_time_var = tk.StringVar(value="")
+        ttk.Label(row1, textvariable=self._ap_time_var).pack(side="right")
 
-        self._player_title_var = tk.StringVar(value="No audio loaded — double-click an [audio] artifact to play")
-        ttk.Label(top_row, textvariable=self._player_title_var).pack(side="left")
+        # Row 2: seek bar
+        self._ap_scale_var = tk.DoubleVar(value=0)
+        self._ap_scale = ttk.Scale(pf, from_=0, to=1000, orient="horizontal",
+                                    variable=self._ap_scale_var,
+                                    command=self._ap_on_seek)
+        self._ap_scale.pack(fill="x", pady=(2, 0))
 
-        self._player_time_var = tk.StringVar(value="")
-        ttk.Label(top_row, textvariable=self._player_time_var).pack(side="right")
-
-        # Row 2: Seek bar (full width)
-        self._player_progress_var = tk.DoubleVar(value=0)
-        self._player_scale = ttk.Scale(
-            player_frame, from_=0, to=100, orient="horizontal",
-            variable=self._player_progress_var, command=self._on_seek
-        )
-        self._player_scale.pack(fill="x", pady=(2, 0))
-
-        # Row 3: Controls
-        ctrl = ttk.Frame(player_frame)
+        # Row 3: controls
+        ctrl = ttk.Frame(pf)
         ctrl.pack(fill="x", pady=(2, 0))
-
-        self._play_btn = ttk.Button(ctrl, text="Play", command=self._toggle_play, width=6)
-        self._play_btn.pack(side="left", padx=2)
-
-        ttk.Button(ctrl, text="Stop", command=self._stop_audio, width=5).pack(side="left", padx=2)
-
+        self._ap_play_btn = ttk.Button(ctrl, text="Play", command=self._ap_toggle, width=6)
+        self._ap_play_btn.pack(side="left", padx=2)
+        ttk.Button(ctrl, text="Stop", command=self._ap_stop, width=5).pack(side="left", padx=2)
         ttk.Label(ctrl, text="Speed:").pack(side="left", padx=(15, 2))
-        self._speed_var = tk.StringVar(value="1.0x")
-        speed_combo = ttk.Combobox(
-            ctrl, textvariable=self._speed_var, width=5,
-            values=["0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"],
-            state="readonly"
-        )
-        speed_combo.pack(side="left", padx=2)
-        speed_combo.bind("<<ComboboxSelected>>", self._on_speed_change)
+        self._ap_speed_var = tk.StringVar(value="1.0x")
+        sc = ttk.Combobox(ctrl, textvariable=self._ap_speed_var, width=5,
+                           values=["0.5x", "0.75x", "1.0x", "1.25x", "1.5x", "2.0x"],
+                           state="readonly")
+        sc.pack(side="left", padx=2)
+        sc.bind("<<ComboboxSelected>>", self._ap_on_speed)
 
-    def _init_pygame(self):
-        """Initialize pygame mixer on first use."""
-        if self._player_initialized:
+    # --- helpers ---
+
+    def _ap_init(self):
+        if self._ap_initialized:
             return True
         try:
             import pygame
             pygame.mixer.init(frequency=44100)
-            self._player_initialized = True
+            self._ap_initialized = True
             return True
         except Exception as e:
-            messagebox.showerror("Audio Error",
-                                 f"Could not initialize audio player:\n{e}\n\n"
-                                 "Install pygame: pip install pygame")
+            messagebox.showerror("Audio Error", f"Cannot init audio:\n{e}")
             return False
 
     def _load_playback_state(self):
-        """Load saved playback positions."""
-        if self._playback_state_file.exists():
+        if self._ap_state_file.exists():
             try:
-                return json.loads(self._playback_state_file.read_text(encoding="utf-8"))
-            except (json.JSONDecodeError, OSError):
+                return json.loads(self._ap_state_file.read_text(encoding="utf-8"))
+            except Exception:
                 pass
         return {}
 
-    def _save_playback_state(self):
-        """Save playback positions to disk."""
-        self._playback_state_file.write_text(
-            json.dumps(self._playback_positions, indent=2, ensure_ascii=False),
-            encoding="utf-8"
-        )
+    def _ap_save_positions(self):
+        self._ap_state_file.write_text(
+            json.dumps(self._ap_positions, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    def _save_current_position(self):
-        """Save the current playback position."""
-        if self._current_audio_id and self._audio_length_ms > 0:
-            pos_ms = self._get_current_pos_ms()
-            self._playback_positions[self._current_audio_id] = {
-                "position_ms": pos_ms,
-                "length_ms": self._audio_length_ms,
-                "speed": self._playback_speed,
-            }
-            self._save_playback_state()
+    def _ap_save_pos(self):
+        if self._ap_audio_id and self._ap_duration_ms > 0:
+            self._ap_positions[self._ap_audio_id] = {
+                "pos": self._ap_current_ms(), "speed": self._ap_speed}
+            self._ap_save_positions()
 
-    def _get_current_pos_ms(self):
-        """Get current playback position in milliseconds."""
-        if self._playing and not self._paused:
-            elapsed = (time.time() - self._play_start_time) * 1000 * self._playback_speed
-            return min(self._play_offset_ms + elapsed, self._audio_length_ms)
-        return self._play_offset_ms
+    def _ap_current_ms(self):
+        """Current position in original-audio milliseconds."""
+        if self._ap_playing and not self._ap_paused:
+            import pygame
+            # get_pos() = ms since play() was called (real time, not affected by speed)
+            played_real_ms = pygame.mixer.music.get_pos()
+            if played_real_ms < 0:
+                played_real_ms = 0
+            # In speed-adjusted file, real ms = original ms / speed
+            original_ms = self._ap_seek_offset_ms + played_real_ms * self._ap_speed
+            return min(original_ms, self._ap_duration_ms)
+        return self._ap_seek_offset_ms
 
     @staticmethod
-    def _ffmpeg_convert(input_path, output_path, speed=1.0):
-        """Convert audio to WAV using ffmpeg, optionally with speed change."""
+    def _ap_run_ffmpeg(cmd):
         import subprocess
-        cmd = ["ffmpeg", "-y", "-i", input_path]
+        r = subprocess.run(cmd, capture_output=True, timeout=300)
+        if r.returncode != 0:
+            raise RuntimeError(r.stderr.decode(errors="replace")[-300:])
+
+    def _ap_get_wav(self, raw_path, artifact_id, speed=1.0):
+        """Convert raw -> WAV (at given speed). Returns WAV path. Cached."""
+        suffix = "" if speed == 1.0 else f"_speed{speed:.2f}"
+        wav = self._ap_cache / f"{artifact_id}{suffix}.wav"
+        if wav.exists():
+            return str(wav)
+        cmd = ["ffmpeg", "-y", "-i", str(raw_path)]
         if speed != 1.0:
-            # atempo filter for speed change (preserves pitch)
-            # atempo only supports 0.5–2.0, chain filters for extremes
             cmd += ["-filter:a", f"atempo={speed}"]
-        cmd += ["-ar", "44100", "-ac", "2", output_path]
-        result = subprocess.run(cmd, capture_output=True, timeout=120)
-        if result.returncode != 0:
-            raise RuntimeError(result.stderr.decode(errors="replace")[-200:])
+        cmd += ["-ar", "44100", "-ac", "2", str(wav)]
+        self._ap_run_ffmpeg(cmd)
+        return str(wav)
 
-    @staticmethod
-    def _ffprobe_duration_ms(file_path):
-        """Get audio duration in milliseconds using ffprobe."""
+    def _ap_get_duration(self, file_path):
+        """Get duration in ms via ffprobe."""
         import subprocess
-        cmd = ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-               "-of", "default=noprint_wrappers=1:nokey=1", file_path]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if result.returncode == 0 and result.stdout.strip():
-            return int(float(result.stdout.strip()) * 1000)
+        r = subprocess.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", file_path],
+            capture_output=True, text=True, timeout=30)
+        if r.returncode == 0 and r.stdout.strip():
+            return int(float(r.stdout.strip()) * 1000)
         return 0
 
+    def _ap_find_raw(self, artifact_id):
+        """Find any cached raw/mp3 file for this artifact."""
+        import glob as g
+        for ext in ["*.raw", "*.mp3"]:
+            hits = list(self._ap_cache.glob(f"{artifact_id}_*{ext.replace('*','')}"))
+            if hits:
+                return str(hits[0])
+        return None
+
+    # --- main actions ---
+
     def _play_selected_artifact(self):
-        """Download and play the selected audio artifact."""
+        """Play the selected audio artifact."""
         sel = self.art_listbox.curselection()
         if not sel or not self.selected_nb_id:
-            messagebox.showwarning("No selection", "Select an audio artifact to play.")
+            return
+        # Check it's audio by listbox text
+        text = self.art_listbox.get(sel[0])
+        if not text.startswith("[audio]"):
+            messagebox.showwarning("Not audio", "Select an [audio] artifact.")
             return
 
         artifact = self.artifacts[sel[0]]
+        aid = artifact.id
+        title = artifact.title
 
-        # Check if it's an audio artifact — try multiple ways
-        is_audio = False
-        if hasattr(artifact, 'kind'):
-            is_audio = (getattr(artifact.kind, 'value', '') == 'audio'
-                        or str(artifact.kind) == 'audio')
-        if not is_audio and hasattr(artifact, '_artifact_type'):
-            is_audio = artifact._artifact_type == 1
-        if not is_audio:
-            # Also check by listbox text
-            text = self.art_listbox.get(sel[0])
-            is_audio = text.startswith("[audio]")
-
-        if not is_audio:
-            messagebox.showwarning("Not audio", "Select an [audio] artifact to play.")
+        # Already playing this one? Do nothing
+        if aid == self._ap_audio_id and self._ap_playing:
             return
 
-        # Stop current playback and save position before switching
-        self._stop_audio()
+        # Stop current
+        self._ap_stop()
 
-        safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in artifact.title)
-        raw_path = self._speed_cache_dir / f"{artifact.id}_{safe_title}.raw"
-        wav_path = self._speed_cache_dir / f"{artifact.id}_{safe_title}.wav"
-        # Also check for old .mp3 downloads
-        old_mp3 = self._speed_cache_dir / f"{artifact.id}_{safe_title}.mp3"
+        self._ap_audio_id = aid
+        self._ap_audio_title = title
+        self._ap_title_var.set(f"{title}  (loading...)")
 
-        # If WAV already cached, play immediately
-        if wav_path.exists():
-            self._load_and_play(str(wav_path), artifact.id, artifact.title)
+        # Check cache for WAV at 1x speed
+        raw = self._ap_find_raw(aid)
+        wav_1x = self._ap_cache / f"{aid}.wav"
+
+        if wav_1x.exists():
+            self._ap_ready(str(wav_1x), aid, title)
             return
 
-        # If raw downloaded but not converted, convert
-        if raw_path.exists():
-            self._convert_and_play(str(raw_path), str(wav_path), artifact.id, artifact.title)
+        if raw:
+            # Convert in background
+            self.status_var.set(f"Converting: {title}...")
+            def _do():
+                return self._ap_get_wav(raw, aid, 1.0)
+            def _done(p):
+                self.status_var.set("")
+                self._ap_ready(p, aid, title)
+            _run_async(self.frame, _do, on_done=_done,
+                       on_error=lambda e: self._ap_title_var.set(f"Error: {e}"))
             return
 
-        # Check old .mp3 cache and convert it
-        if old_mp3.exists():
-            self._convert_and_play(str(old_mp3), str(wav_path), artifact.id, artifact.title)
-            return
-
-        # Download raw file first
-        self.status_var.set(f"Downloading audio: {artifact.title}...")
+        # Download then convert
+        safe = "".join(c if c.isalnum() or c in " -_" else "_" for c in title)
+        raw_path = str(self._ap_cache / f"{aid}_{safe}.raw")
+        self.status_var.set(f"Downloading: {title}...")
         import notebooklm_wrapper as w
 
-        def _done(path):
-            self.status_var.set("Converting audio...")
-            self._convert_and_play(str(raw_path), str(wav_path), artifact.id, artifact.title)
+        def _downloaded(path):
+            self.status_var.set(f"Converting: {title}...")
+            def _do():
+                return self._ap_get_wav(raw_path, aid, 1.0)
+            def _done(p):
+                self.status_var.set("")
+                self._ap_ready(p, aid, title)
+            _run_async(self.frame, _do, on_done=_done,
+                       on_error=lambda e: self._ap_title_var.set(f"Error: {e}"))
 
         _run_async(self.frame, w.download_artifact,
-                   args=(self.selected_nb_id, "audio", str(raw_path)),
-                   kwargs={"artifact_id": artifact.id},
-                   on_done=_done,
-                   on_error=lambda e: self.status_var.set(f"Download error: {e}"))
+                   args=(self.selected_nb_id, "audio", raw_path),
+                   kwargs={"artifact_id": aid},
+                   on_done=_downloaded,
+                   on_error=lambda e: self._ap_title_var.set(f"Download error: {e}"))
 
-    def _convert_and_play(self, raw_path, wav_path, audio_id, title):
-        """Convert raw audio to WAV in background, then play."""
-        def _do():
-            self._ffmpeg_convert(raw_path, wav_path)
-            return wav_path
-
-        def _done(path):
-            self.status_var.set("Playing...")
-            self._load_and_play(path, audio_id, title)
-
-        def _err(e):
-            self.status_var.set(f"Convert error: {e}")
-
-        _run_async(self.frame, _do, on_done=_done, on_error=_err)
-
-    def _load_and_play(self, audio_path, audio_id, title):
-        """Load an audio file into the player and start playback."""
-        if not self._init_pygame():
+    def _ap_ready(self, wav_1x_path, aid, title):
+        """WAV at 1x is ready. Get duration, restore position, start playing."""
+        if not self._ap_init():
             return
 
-        # Stop any current playback
-        self._stop_audio()
+        self._ap_wav_path = wav_1x_path
+        self._ap_audio_id = aid
+        self._ap_audio_title = title
 
-        self._current_audio_path = audio_path
-        self._current_audio_id = audio_id
+        # Duration from the 1x WAV
+        self._ap_duration_ms = self._ap_get_duration(wav_1x_path)
+        if self._ap_duration_ms == 0:
+            # Fallback: compute from WAV size (44100 Hz, 2 ch, 16-bit)
+            sz = os.path.getsize(wav_1x_path)
+            self._ap_duration_ms = int((sz - 44) / 176400 * 1000)
 
-        # Get audio duration via ffprobe
-        self._audio_length_ms = self._ffprobe_duration_ms(audio_path)
+        # Restore saved position & speed
+        saved = self._ap_positions.get(aid, {})
+        pos = saved.get("pos", 0)
+        spd = saved.get("speed", 1.0)
+        self._ap_speed = spd
+        self._ap_speed_var.set(f"{spd}x")
 
-        # Restore saved position
-        saved = self._playback_positions.get(audio_id, {})
-        saved_pos = saved.get("position_ms", 0)
-        saved_speed = saved.get("speed", 1.0)
+        self._ap_title_var.set(title)
+        self._ap_play_at(pos)
 
-        self._playback_speed = saved_speed
-        self._speed_var.set(f"{saved_speed}x")
-        self._player_title_var.set(title)
-
-        # Start playback from saved position
-        self._start_playback_at(saved_pos)
-
-    def _get_speed_wav_path(self, speed):
-        """Get path to speed-adjusted WAV file. Uses ffmpeg + cache."""
-        if not self._current_audio_path:
-            return None
-        if speed == 1.0:
-            return self._current_audio_path
-
-        base = Path(self._current_audio_path).stem
-        cache_path = self._speed_cache_dir / f"{base}_speed{speed:.2f}.wav"
-        if cache_path.exists():
-            return str(cache_path)
-
-        # Convert with ffmpeg (atempo preserves pitch)
-        try:
-            self._ffmpeg_convert(self._current_audio_path, str(cache_path), speed)
-            return str(cache_path)
-        except Exception as e:
-            self.status_var.set(f"Speed change failed: {e}")
-            return self._current_audio_path
-
-    def _start_playback_at(self, position_ms):
-        """Start playing from a specific position in milliseconds."""
+    def _ap_play_at(self, pos_ms):
+        """Start playback from pos_ms (in original audio ms)."""
         import pygame
 
-        speed = self._playback_speed
-        audio_path = self._get_speed_wav_path(speed)
-        if not audio_path:
-            return
+        speed = self._ap_speed
+        # Get the WAV for this speed (may need to generate)
+        if speed == 1.0:
+            wav = self._ap_wav_path
+        else:
+            wav = self._ap_cache / f"{self._ap_audio_id}_speed{speed:.2f}.wav"
+            if not wav.exists():
+                # Generate synchronously (should be fast if 1x WAV exists)
+                try:
+                    raw = self._ap_find_raw(self._ap_audio_id) or self._ap_wav_path
+                    self._ap_get_wav(raw, self._ap_audio_id, speed)
+                except Exception as e:
+                    self.status_var.set(f"Speed error: {e}")
+                    wav = self._ap_wav_path
+                    speed = 1.0
+            wav = str(wav)
 
         try:
-            pygame.mixer.music.load(audio_path)
-            # For speed-adjusted files, real position is different
-            if speed != 1.0:
-                start_sec = (position_ms / 1000.0) / speed
-            else:
-                start_sec = position_ms / 1000.0
+            pygame.mixer.music.load(wav)
+            # In the speed-adjusted file, position maps differently
+            start_sec = (pos_ms / 1000.0) / speed
             pygame.mixer.music.play(start=start_sec)
 
-            self._playing = True
-            self._paused = False
-            self._play_offset_ms = position_ms
-            self._play_start_time = time.time()
-            self._play_btn.config(text="Pause")
+            self._ap_playing = True
+            self._ap_paused = False
+            self._ap_seek_offset_ms = pos_ms
+            self._ap_play_btn.config(text="Pause")
 
-            self._update_player_progress()
+            self._ap_tick()
         except Exception as e:
-            self.status_var.set(f"Playback error: {e}")
+            self.status_var.set(f"Play error: {e}")
 
-    def _toggle_play(self):
-        """Play/pause toggle."""
+    def _ap_toggle(self):
+        """Play / Pause toggle."""
         import pygame
 
-        if not self._current_audio_path:
+        if not self._ap_wav_path:
             self._play_selected_artifact()
             return
 
-        if not self._playing:
-            if self._paused:
-                pygame.mixer.music.unpause()
-                self._playing = True
-                self._paused = False
-                self._play_start_time = time.time()
-                self._play_btn.config(text="Pause")
-                self._update_player_progress()
-            else:
-                self._start_playback_at(self._play_offset_ms)
-        else:
-            self._save_current_position()
-            self._play_offset_ms = self._get_current_pos_ms()
+        if self._ap_playing and not self._ap_paused:
+            # Pause
+            self._ap_save_pos()
+            self._ap_seek_offset_ms = self._ap_current_ms()
             pygame.mixer.music.pause()
-            self._playing = False
-            self._paused = True
-            self._play_btn.config(text="Play")
+            self._ap_paused = True
+            self._ap_playing = True  # still "loaded"
+            self._ap_play_btn.config(text="Play")
+        elif self._ap_paused:
+            # Unpause
+            pygame.mixer.music.unpause()
+            self._ap_paused = False
+            self._ap_play_btn.config(text="Pause")
+            self._ap_tick()
+        else:
+            # Start from saved offset
+            self._ap_play_at(self._ap_seek_offset_ms)
 
-    def _stop_audio(self):
-        """Stop playback and save position."""
-        if self._player_initialized:
+    def _ap_stop(self):
+        """Stop playback, save position."""
+        if self._ap_initialized:
             try:
                 import pygame
-                self._save_current_position()
+                if self._ap_playing:
+                    self._ap_save_pos()
                 pygame.mixer.music.stop()
             except Exception:
                 pass
-        self._playing = False
-        self._paused = False
-        self._play_btn.config(text="Play")
+        self._ap_playing = False
+        self._ap_paused = False
+        self._ap_play_btn.config(text="Play")
 
-    def _on_seek(self, value):
-        """Handle seek bar interaction."""
-        if not self._current_audio_path or self._audio_length_ms == 0:
+    def _ap_on_seek(self, value):
+        """Seek bar dragged."""
+        if self._ap_updating or self._ap_duration_ms == 0:
             return
-        pct = float(value)
-        target_ms = (pct / 100.0) * self._audio_length_ms
-        if self._playing:
-            self._start_playback_at(target_ms)
+        target_ms = (float(value) / 1000.0) * self._ap_duration_ms
+        if self._ap_playing and not self._ap_paused:
+            self._ap_play_at(target_ms)
         else:
-            self._play_offset_ms = target_ms
-            self._update_time_label(target_ms)
+            self._ap_seek_offset_ms = target_ms
+            self._ap_update_time(target_ms)
 
-    def _on_speed_change(self, event=None):
-        """Handle speed dropdown change."""
-        speed_str = self._speed_var.get().replace("x", "")
+    def _ap_on_speed(self, event=None):
+        """Speed combo changed."""
         try:
-            new_speed = float(speed_str)
+            new_speed = float(self._ap_speed_var.get().replace("x", ""))
         except ValueError:
             return
-        if new_speed == self._playback_speed:
+        if new_speed == self._ap_speed:
             return
 
-        current_pos = self._get_current_pos_ms()
-        was_playing = self._playing
+        pos = self._ap_current_ms()
+        was_playing = self._ap_playing and not self._ap_paused
 
-        # Stop current playback
-        if self._player_initialized:
+        if self._ap_initialized:
             try:
                 import pygame
                 pygame.mixer.music.stop()
             except Exception:
                 pass
+        self._ap_playing = False
+        self._ap_paused = False
+        self._ap_speed = new_speed
+        self._ap_seek_offset_ms = pos
 
-        self._playing = False
-        self._paused = False
-        self._playback_speed = new_speed
-        self._play_offset_ms = current_pos
-
-        # Generate speed-adjusted file in background, then resume
         if was_playing:
-            self.status_var.set(f"Adjusting speed to {new_speed}x...")
-            def _do():
-                return self._get_speed_wav_path(new_speed)
-            def _done(path):
-                self.status_var.set(f"Playing at {new_speed}x")
-                self._start_playback_at(current_pos)
-            _run_async(self.frame, _do, on_done=_done,
-                       on_error=lambda e: self.status_var.set(f"Speed error: {e}"))
+            self._ap_play_at(pos)
         else:
-            self._save_current_position()
+            self._ap_save_pos()
 
-    def _update_player_progress(self):
-        """Periodically update the progress bar and time display."""
-        if not self._playing:
+    def _ap_tick(self):
+        """Update UI every 500ms while playing."""
+        if not self._ap_playing or self._ap_paused:
             return
 
         import pygame
-        pos_ms = self._get_current_pos_ms()
+        pos = self._ap_current_ms()
 
-        # Check if playback finished
-        if not pygame.mixer.music.get_busy() and not self._paused:
-            self._playing = False
-            self._play_offset_ms = 0
-            self._play_btn.config(text="Play")
-            self._player_progress_var.set(0)
-            self._update_time_label(0)
-            if self._current_audio_id in self._playback_positions:
-                del self._playback_positions[self._current_audio_id]
-                self._save_playback_state()
+        if not pygame.mixer.music.get_busy():
+            # Finished
+            self._ap_playing = False
+            self._ap_seek_offset_ms = 0
+            self._ap_play_btn.config(text="Play")
+            self._ap_scale_var.set(0)
+            self._ap_update_time(0)
+            self._ap_positions.pop(self._ap_audio_id, None)
+            self._ap_save_positions()
             return
 
-        if self._audio_length_ms > 0:
-            pct = (pos_ms / self._audio_length_ms) * 100
-            self._player_progress_var.set(min(pct, 100))
-        self._update_time_label(pos_ms)
-        self.frame.after(500, self._update_player_progress)
+        if self._ap_duration_ms > 0:
+            self._ap_updating = True
+            self._ap_scale_var.set((pos / self._ap_duration_ms) * 1000)
+            self._ap_updating = False
+        self._ap_update_time(pos)
+        self.frame.after(500, self._ap_tick)
 
-    def _update_time_label(self, pos_ms):
-        """Update the time display."""
-        pos_str = self._format_time(pos_ms)
-        total_str = self._format_time(self._audio_length_ms)
-        speed_str = f" ({self._playback_speed}x)" if self._playback_speed != 1.0 else ""
-        self._player_time_var.set(f"{pos_str} / {total_str}{speed_str}")
+    def _ap_update_time(self, pos_ms):
+        t = self._fmt(pos_ms)
+        d = self._fmt(self._ap_duration_ms)
+        s = f" ({self._ap_speed}x)" if self._ap_speed != 1.0 else ""
+        self._ap_time_var.set(f"{t} / {d}{s}")
 
     @staticmethod
-    def _format_time(ms):
-        """Format milliseconds as M:SS or H:MM:SS."""
-        total_sec = int(ms / 1000)
-        hours = total_sec // 3600
-        minutes = (total_sec % 3600) // 60
-        seconds = total_sec % 60
-        if hours > 0:
-            return f"{hours}:{minutes:02d}:{seconds:02d}"
-        return f"{minutes}:{seconds:02d}"
+    def _fmt(ms):
+        s = int(ms / 1000)
+        h, s = divmod(s, 3600)
+        m, s = divmod(s, 60)
+        return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
 
     # ------------------------------------------------------------ #
     #  Chat actions                                                  #
