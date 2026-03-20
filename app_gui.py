@@ -4,6 +4,7 @@ NotebookLM Toolkit — Integrated GUI
 
 Tab 1: PDF Cleaner  — Remove watermarks & export 4K PNGs
 Tab 2: Audio Transcriber — Transcribe .m4a to text with split option
+Tab 3: NotebookLM — Full NotebookLM client (notebooks, sources, generate, chat)
 """
 
 import os
@@ -513,8 +514,8 @@ class App:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("NotebookLM Toolkit")
-        self.root.geometry("720x620")
-        self.root.minsize(650, 550)
+        self.root.geometry("950x720")
+        self.root.minsize(800, 600)
 
         # Style
         style = ttk.Style()
@@ -535,6 +536,14 @@ class App:
 
         self.audio_tab = AudioTranscriberTab(notebook)
         notebook.add(self.audio_tab.frame, text="  Audio Transcriber  ")
+
+        # NotebookLM tab (optional — only if notebooklm-py is installed)
+        try:
+            from notebooklm_tab import NotebookLMTab
+            self.nlm_tab = NotebookLMTab(notebook)
+            notebook.add(self.nlm_tab.frame, text="  NotebookLM  ")
+        except ImportError:
+            pass  # notebooklm-py not installed, skip tab
 
     def run(self):
         self.root.mainloop()

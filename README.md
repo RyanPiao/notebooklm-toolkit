@@ -1,6 +1,6 @@
 # NotebookLM Toolkit
 
-A Python app that removes NotebookLM watermarks from PDFs and exports pages as high-quality 4K PNGs. Also includes an audio transcriber that converts `.m4a` files to text using local Whisper.
+An all-in-one Python toolkit for Google NotebookLM. Clean watermarks from exported PDFs, export 4K PNGs, transcribe audio to text, and control NotebookLM directly from a GUI — create notebooks, add sources, generate artifacts, and chat.
 
 Works on **macOS** and **Windows**. Includes both a GUI and CLI.
 
@@ -20,6 +20,24 @@ Works on **macOS** and **Windows**. Includes both a GUI and CLI.
 - Also supports splitting by max character count via CLI
 - Chunk navigation in GUI with copy-to-clipboard per part
 - Selectable Whisper model: `tiny`, `base`, `small`, `medium`, `large`
+
+### NotebookLM Client (Optional)
+Powered by [notebooklm-py](https://github.com/teng-lin/notebooklm-py) — an unofficial Python client for Google NotebookLM.
+
+- **Notebook management** — create, list, delete notebooks
+- **Source management** — add URLs, files (PDF/DOCX/MD/CSV), text, YouTube links; delete sources
+- **Generate artifacts** with full parameter control:
+  - **Audio Overview** — format (Deep Dive / Brief / Critique / Debate), length (Short / Default / Long), language
+  - **Video** — format (Explainer / Brief / Cinematic), style (10 options including Anime, Watercolor, Whiteboard), language
+  - **Report** — format (Briefing Doc / Study Guide / Blog Post / Custom), language
+  - **Quiz** — quantity (Fewer / Standard / More), difficulty (Easy / Medium / Hard)
+  - **Flashcards** — quantity, difficulty
+  - **Infographic** — orientation (Landscape / Portrait / Square), detail (Concise / Standard / Detailed), style (11 options), language
+  - **Slide Deck** — format (Detailed Deck / Presenter Slides), length (Default / Short), language
+  - **Data Table** — language
+  - **Mind Map**
+- **Chat** — ask questions with citations, select chat mode (Default / Learning Guide / Concise / Detailed), follow-up conversations
+- **Download** artifacts with optional auto-processing (clean PDF → 4K PNGs, audio → transcription)
 
 ## Installation
 
@@ -54,6 +72,10 @@ python3 -m venv venv
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Optional: Enable NotebookLM integration
+pip install "notebooklm-py[browser]"
+playwright install chromium
 ```
 
 ## Usage
@@ -64,10 +86,20 @@ pip install -r requirements.txt
 python app_gui.py
 ```
 
-Opens a window with two tabs:
+Opens a window with tabs:
 
 - **PDF Cleaner** — select PDFs or a folder, set output directory and resolution, click Start
 - **Audio Transcriber** — select an `.m4a` file, choose model and split settings, click Transcribe
+- **NotebookLM** *(if notebooklm-py installed)* — manage notebooks, sources, generate artifacts, chat
+
+#### NotebookLM Tab — First Time Setup
+
+1. Click **"Login (Browser)"** — opens a Chromium window for Google sign-in
+2. Sign in with your Google account that has NotebookLM access
+3. Close the browser when prompted — cookies are saved locally
+4. Click **"List"** to load your notebooks
+
+Authentication cookies expire periodically — re-login when needed.
 
 ### CLI Mode
 
