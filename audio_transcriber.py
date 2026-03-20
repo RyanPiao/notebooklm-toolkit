@@ -36,6 +36,26 @@ class TranscriberConfig:
 #  Text splitting                                                     #
 # ------------------------------------------------------------------ #
 
+def _find_word_boundary(text: str, pos: int) -> int:
+    """Find the nearest word boundary (space) to pos, preferring forward."""
+    if pos >= len(text):
+        return len(text)
+    if pos <= 0:
+        return 0
+
+    # Look forward for a space (up to 200 chars)
+    fwd = text.find(" ", pos)
+    if fwd != -1 and fwd - pos < 200:
+        return fwd
+
+    # Look backward for a space
+    bwd = text.rfind(" ", 0, pos)
+    if bwd != -1:
+        return bwd
+
+    return pos
+
+
 def split_text_by_chars(text: str, max_chars: int) -> List[str]:
     """
     Split text into chunks of approximately max_chars characters.
@@ -64,15 +84,55 @@ def split_text_by_chars(text: str, max_chars: int) -> List[str]:
     return chunks
 
 
-def split_text_into_parts(text: str, num_parts: int) -> List[str]:
+def split_text_into_parts(
+    text: str, num_parts: int, overlap_chars: int = 500
+) -> List[str]:
     """
-    Split text into N roughly equal parts at word boundaries.
-    """
-    if num_parts <= 1 or not text.strip():
-        return [text.strip()]
+    Split text into exactly N parts at word boundaries.
 
-    chars_per_part = math.ceil(len(text.strip()) / num_parts)
-    return split_text_by_chars(text, chars_per_part)
+    From part 2 onward, each part is prefixed with overlap_chars characters
+    from the end of the previous part (at a word boundary) for context.
+    Set overlap_chars=0 to disable overlap.
+    """
+    text = text.strip()
+    if num_parts <= 1 or not text:
+        return [text] if text else [""]
+
+    total = len(text)
+
+    # Find N-1 split points at evenly-spaced positions, snapped to word boundaries
+    split_points = []
+    for i in range(1, num_parts):
+        ideal_pos = int(total * i / num_parts)
+        actual_pos = _find_word_boundary(text, ideal_pos)
+        split_points.append(actual_pos)
+
+    # Build non-overlapping segments first
+    boundaries = [0] + split_points + [total]
+    segments = []
+    for i in range(len(boundaries) - 1):
+        seg = text[boundaries[i]:boundaries[i + 1]].strip()
+        segments.append(seg)
+
+    # Add overlap: for part 2+, prepend overlap_chars from previous segment
+    if overlap_chars > 0 and len(segments) > 1:
+        chunks = [segments[0]]
+        for i in range(1, len(segments)):
+            prev_text = segments[i - 1]
+            if len(prev_text) <= overlap_chars:
+                overlap = prev_text
+            else:
+                # Find a word boundary for the overlap start
+                overlap_start = len(prev_text) - overlap_chars
+                bwd = prev_text.find(" ", overlap_start)
+                if bwd != -1 and bwd < len(prev_text):
+                    overlap = prev_text[bwd:].strip()
+                else:
+                    overlap = prev_text[overlap_start:].strip()
+            chunks.append(f"[...continued]\n{overlap}\n\n{segments[i]}")
+        return chunks
+
+    return segments
 
 
 # ------------------------------------------------------------------ #
@@ -211,6 +271,10 @@ def cli_main():
         "--split-chars", type=int, default=0,
         help="Split output every N characters (e.g., --split-chars 2000)",
     )
+    parser.add_argument(
+        "--overlap", type=int, default=500,
+        help="Overlap chars from previous part (default: 500, 0 = no overlap)",
+    )
 
     args = parser.parse_args()
 
@@ -237,8 +301,9 @@ def cli_main():
     # Split after transcription
     chunks = None
     if args.split_parts > 1:
-        chunks = split_text_into_parts(full_text, args.split_parts)
-        print(f"\n  Split into {len(chunks)} parts (~{len(chunks[0])} chars each)")
+        chunks = split_text_into_parts(full_text, args.split_parts, args.overlap)
+        overlap_info = f" with {args.overlap}-char overlap" if args.overlap > 0 else ""
+        print(f"\n  Split into {len(chunks)} parts{overlap_info}")
     elif args.split_chars > 0:
         chunks = split_text_by_chars(full_text, args.split_chars)
         print(f"\n  Split into {len(chunks)} chunks (max {args.split_chars} chars each)")

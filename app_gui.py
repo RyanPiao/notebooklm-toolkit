@@ -272,15 +272,24 @@ class AudioTranscriberTab:
         self.split_spinbox.grid(row=0, column=1, sticky="w", padx=(5, 5))
         ttk.Label(self.split_frame, text="equal parts").grid(row=0, column=2, sticky="w")
 
+        ttk.Label(self.split_frame, text="Overlap:").grid(row=0, column=3, sticky="w", padx=(15, 0))
+        self.overlap_var = tk.IntVar(value=500)
+        self.overlap_spinbox = ttk.Spinbox(
+            self.split_frame, textvariable=self.overlap_var,
+            from_=0, to=5000, increment=100, width=6
+        )
+        self.overlap_spinbox.grid(row=0, column=4, sticky="w", padx=(5, 5))
+        ttk.Label(self.split_frame, text="chars", foreground="gray").grid(row=0, column=5, sticky="w")
+
         self.apply_split_btn = ttk.Button(
             self.split_frame, text="Apply Split", command=self._apply_split
         )
-        self.apply_split_btn.grid(row=0, column=3, sticky="w", padx=(15, 10))
+        self.apply_split_btn.grid(row=0, column=6, sticky="w", padx=(15, 10))
 
         self.chars_info_var = tk.StringVar()
         ttk.Label(
             self.split_frame, textvariable=self.chars_info_var, foreground="gray"
-        ).grid(row=0, column=4, sticky="w", padx=(5, 0))
+        ).grid(row=1, column=0, columnspan=7, sticky="w", pady=(5, 0))
 
         # Initially disable split controls
         self._set_split_enabled(False)
@@ -326,6 +335,7 @@ class AudioTranscriberTab:
     def _set_split_enabled(self, enabled):
         state = "normal" if enabled else "disabled"
         self.split_spinbox.config(state=state)
+        self.overlap_spinbox.config(state=state)
         self.apply_split_btn.config(state=state)
 
     def _set_nav_enabled(self, has_chunks):
@@ -411,7 +421,7 @@ class AudioTranscriberTab:
         self._show_chunk(0)
 
     def _apply_split(self):
-        """Re-split the full text into N equal parts."""
+        """Re-split the full text into N equal parts with overlap."""
         if not self.full_text:
             return
 
@@ -422,15 +432,20 @@ class AudioTranscriberTab:
             num_parts = 1
             self.split_parts_var.set(1)
 
-        self.chunks = split_text_into_parts(self.full_text, num_parts)
+        overlap = self.overlap_var.get()
+        if overlap < 0:
+            overlap = 0
+            self.overlap_var.set(0)
+
+        self.chunks = split_text_into_parts(self.full_text, num_parts, overlap)
         self.current_chunk = 0
 
         total_chars = len(self.full_text)
-        avg_chars = total_chars // len(self.chunks) if self.chunks else 0
+        overlap_info = f", {overlap}-char overlap" if overlap > 0 and num_parts > 1 else ""
         self.chars_info_var.set(
-            f"Total: {total_chars} chars | {len(self.chunks)} parts, ~{avg_chars} chars each"
+            f"Total: {total_chars} chars | {len(self.chunks)} parts{overlap_info}"
         )
-        self.status_var.set(f"Split into {len(self.chunks)} equal parts")
+        self.status_var.set(f"Split into {len(self.chunks)} parts")
 
         self._set_nav_enabled(len(self.chunks) > 1)
         self._show_chunk(0)
