@@ -246,8 +246,9 @@ class NotebookLMTab:
 
         self.art_listbox = tk.Listbox(art_frame, height=5, exportselection=False)
         self.art_listbox.pack(fill="x", pady=(5, 0))
+        self.art_listbox.bind("<Double-1>", lambda e: self._play_selected_artifact())
 
-        # --- Audio Player ---
+        # --- Audio Player (expand to fill remaining space) ---
         self._build_audio_player(left)
 
         # --- RIGHT PANEL: Tabbed actions ---
@@ -874,8 +875,8 @@ class NotebookLMTab:
 
     def _build_audio_player(self, parent):
         """Build the audio player panel."""
-        player_frame = ttk.LabelFrame(parent, text="Audio Player", padding=5)
-        player_frame.pack(fill="x", pady=(8, 0))
+        player_frame = ttk.LabelFrame(parent, text="Audio Player", padding=8)
+        player_frame.pack(fill="both", expand=True, pady=(8, 0))
 
         # Now playing label
         self._player_title_var = tk.StringVar(value="No audio loaded")
@@ -1003,9 +1004,14 @@ class NotebookLMTab:
             messagebox.showwarning("Not audio", "Select an audio artifact to play.")
             return
 
+        # Save current position before switching
+        self._save_current_position()
+
         safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in artifact.title)
         raw_path = self._speed_cache_dir / f"{artifact.id}_{safe_title}.raw"
         wav_path = self._speed_cache_dir / f"{artifact.id}_{safe_title}.wav"
+        # Also check for old .mp3 downloads
+        old_mp3 = self._speed_cache_dir / f"{artifact.id}_{safe_title}.mp3"
 
         # If WAV already cached, play immediately
         if wav_path.exists():
@@ -1015,6 +1021,11 @@ class NotebookLMTab:
         # If raw downloaded but not converted, convert
         if raw_path.exists():
             self._convert_and_play(str(raw_path), str(wav_path), artifact.id, artifact.title)
+            return
+
+        # Check old .mp3 cache and convert it
+        if old_mp3.exists():
+            self._convert_and_play(str(old_mp3), str(wav_path), artifact.id, artifact.title)
             return
 
         # Download raw file first

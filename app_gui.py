@@ -98,6 +98,7 @@ class PDFCleanerTab:
         self.start_btn.pack(side="left", padx=5)
         self.cancel_btn = ttk.Button(btn_row, text="Cancel", command=self._cancel, state="disabled")
         self.cancel_btn.pack(side="left", padx=5)
+        ttk.Button(btn_row, text="Open Folder", command=self._open_output_folder).pack(side="left", padx=5)
 
         f.columnconfigure(1, weight=1)
 
@@ -204,6 +205,18 @@ class PDFCleanerTab:
             f"{success} pages exported to:\n{os.path.abspath(output_dir)}"
             + (f"\n{errors} errors." if errors else ""),
         )
+
+    def _open_output_folder(self):
+        """Open the output folder in the system file manager."""
+        folder = self.output_var.get().strip()
+        if not folder:
+            messagebox.showwarning("No folder", "Set an output folder first.")
+            return
+        abs_folder = os.path.abspath(folder)
+        if not os.path.isdir(abs_folder):
+            messagebox.showwarning("Not found", f"Folder does not exist:\n{abs_folder}")
+            return
+        os.startfile(abs_folder)
 
 
 # ------------------------------------------------------------------ #
