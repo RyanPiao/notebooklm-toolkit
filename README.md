@@ -48,7 +48,7 @@ cd notebooklm-toolkit
 
 # Create a virtual environment (recommended)
 python3 -m venv venv
-source venv/bin/activate        # macOS / Linux
+# source venv/bin/activate        # macOS / Linux
 # venv\Scripts\activate         # Windows
 
 # Install dependencies
