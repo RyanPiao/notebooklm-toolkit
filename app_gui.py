@@ -109,6 +109,8 @@ class PDFCleanerTab:
         if paths:
             self.pdf_paths = list(paths)
             self.input_var.set(f"{len(paths)} file(s) selected")
+            # Auto-set output folder to same folder as first selected file
+            self.output_var.set(os.path.dirname(paths[0]))
             self._update_info()
 
     def _pick_folder(self):
@@ -121,6 +123,8 @@ class PDFCleanerTab:
             )
             self.pdf_paths = pdfs
             self.input_var.set(folder)
+            # Auto-set output folder to same folder
+            self.output_var.set(folder)
             self._update_info()
 
     def _pick_output(self):
@@ -326,6 +330,12 @@ class AudioTranscriberTab:
         )
         self.save_btn.pack(side="right", padx=5)
 
+        # Send to NotebookLM button (only works if notebooklm-py is installed)
+        self.send_nlm_btn = ttk.Button(
+            nav_frame, text="Send to NotebookLM", command=self._send_to_notebooklm, state="disabled"
+        )
+        self.send_nlm_btn.pack(side="right", padx=5)
+
         # --- Text output ---
         self.text_area = scrolledtext.ScrolledText(f, wrap="word", height=16, width=70)
         self.text_area.grid(row=7, column=0, columnspan=3, sticky="nsew", pady=(4, 0))
@@ -416,6 +426,14 @@ class AudioTranscriberTab:
         # Enable post-transcription controls
         self.save_btn.config(state="normal")
         self.copy_btn.config(state="normal")
+
+        # Enable NotebookLM button only if notebooklm-py is installed
+        try:
+            import notebooklm_wrapper
+            self.send_nlm_btn.config(state="normal")
+        except ImportError:
+            pass
+
         self._set_split_enabled(True)
         self.split_parts_var.set(1)
 
@@ -486,6 +504,112 @@ class AudioTranscriberTab:
             self.frame.clipboard_append(chunk)
             self.status_var.set(f"Part {self.current_chunk + 1} copied to clipboard.")
 
+    def _send_to_notebooklm(self):
+        """Send all split parts as text sources to a NotebookLM notebook."""
+        if not self.chunks:
+            return
+
+        try:
+            import notebooklm_wrapper as w
+        except ImportError:
+            messagebox.showerror(
+                "Not available",
+                "notebooklm-py is not installed.\nRun: pip install \"notebooklm-py[browser]\""
+            )
+            return
+
+        try:
+            notebooks = w.list_notebooks()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load notebooks:\n{e}\n\nMake sure you're logged in.")
+            return
+
+        if not notebooks:
+            messagebox.showwarning("No notebooks", "No notebooks found. Create one in the NotebookLM tab first.")
+            return
+
+        # Popup to select notebook
+        dialog = tk.Toplevel(self.frame)
+        dialog.title("Send to NotebookLM")
+        dialog.geometry("420x300")
+        dialog.transient(self.frame)
+        dialog.grab_set()
+
+        ttk.Label(dialog, text="Select a notebook:").pack(anchor="w", padx=10, pady=(10, 5))
+
+        nb_listbox = tk.Listbox(dialog, height=8, exportselection=False)
+        nb_listbox.pack(fill="both", expand=True, padx=10)
+        for nb in notebooks:
+            nb_listbox.insert("end", f"{nb.title}  ({nb.sources_count} sources)")
+
+        # Base name from audio file
+        audio_name = os.path.splitext(os.path.basename(self.input_var.get()))[0] or "transcript"
+
+        ttk.Label(dialog, text="Source name prefix:").pack(anchor="w", padx=10, pady=(8, 2))
+        name_var = tk.StringVar(value=audio_name)
+        ttk.Entry(dialog, textvariable=name_var, width=40).pack(padx=10, fill="x")
+
+        info_text = f"{len(self.chunks)} part(s) will be added as text sources."
+        ttk.Label(dialog, text=info_text, foreground="gray").pack(padx=10, pady=(5, 0))
+
+        def _do_send():
+            sel = nb_listbox.curselection()
+            if not sel:
+                messagebox.showwarning("No selection", "Select a notebook.")
+                return
+
+            nb = notebooks[sel[0]]
+            prefix = name_var.get().strip() or "transcript"
+            dialog.destroy()
+
+            self.status_var.set(f"Sending {len(self.chunks)} parts to '{nb.title}'...")
+            self.send_nlm_btn.config(state="disabled")
+
+            def _upload():
+                results = []
+                for i, chunk in enumerate(self.chunks, 1):
+                    if len(self.chunks) > 1:
+                        title = f"{prefix}_part_{i}"
+                    else:
+                        title = prefix
+                    try:
+                        w.add_source_text(nb.id, title, chunk)
+                        results.append((title, True, ""))
+                    except Exception as e:
+                        results.append((title, False, str(e)))
+                return results
+
+            def _on_done(results):
+                self.send_nlm_btn.config(state="normal")
+                success = sum(1 for _, ok, _ in results if ok)
+                failed = sum(1 for _, ok, _ in results if not ok)
+                self.status_var.set(
+                    f"Sent {success} parts to '{nb.title}'" + (f", {failed} failed" if failed else "")
+                )
+                summary = []
+                for title, ok, err in results:
+                    summary.append(f"  {title} — {'added' if ok else 'FAILED: ' + err}")
+                messagebox.showinfo(
+                    "Send to NotebookLM",
+                    f"Added {success}/{len(results)} sources to '{nb.title}':\n\n" + "\n".join(summary)
+                )
+
+            def _on_err(e):
+                self.send_nlm_btn.config(state="normal")
+                self.status_var.set(f"Error: {e}")
+                messagebox.showerror("Error", str(e))
+
+            def _run_upload():
+                try:
+                    results = _upload()
+                    self.frame.after(0, _on_done, results)
+                except Exception as e:
+                    self.frame.after(0, _on_err, e)
+
+            threading.Thread(target=_run_upload, daemon=True).start()
+
+        ttk.Button(dialog, text="Send All Parts", command=_do_send).pack(pady=10)
+
     def _save_text(self):
         if not self.full_text:
             return
@@ -531,12 +655,6 @@ class App:
         notebook = ttk.Notebook(self.root)
         notebook.pack(fill="both", expand=True, padx=10, pady=10)
 
-        self.pdf_tab = PDFCleanerTab(notebook)
-        notebook.add(self.pdf_tab.frame, text="  PDF Cleaner  ")
-
-        self.audio_tab = AudioTranscriberTab(notebook)
-        notebook.add(self.audio_tab.frame, text="  Audio Transcriber  ")
-
         # NotebookLM tab (optional — only if notebooklm-py is installed)
         try:
             from notebooklm_tab import NotebookLMTab
@@ -544,6 +662,12 @@ class App:
             notebook.add(self.nlm_tab.frame, text="  NotebookLM  ")
         except ImportError:
             pass  # notebooklm-py not installed, skip tab
+
+        self.audio_tab = AudioTranscriberTab(notebook)
+        notebook.add(self.audio_tab.frame, text="  Audio Transcriber  ")
+
+        self.pdf_tab = PDFCleanerTab(notebook)
+        notebook.add(self.pdf_tab.frame, text="  PDF Cleaner  ")
 
     def run(self):
         self.root.mainloop()

@@ -11,98 +11,88 @@ import threading
 import tkinter as tk
 import tkinter.simpledialog
 from tkinter import ttk, filedialog, messagebox, scrolledtext
+import json
+from pathlib import Path
+
+# Import enums from notebooklm-py
+try:
+    from notebooklm import (
+        AudioFormat, AudioLength,
+        VideoFormat, VideoStyle,
+        ReportFormat,
+        QuizQuantity, QuizDifficulty,
+        InfographicOrientation, InfographicDetail, InfographicStyle,
+        SlideDeckFormat, SlideDeckLength,
+    )
+    _HAS_ENUMS = True
+except ImportError:
+    _HAS_ENUMS = False
 
 
 # ------------------------------------------------------------------ #
 #  Enum display mappings                                              #
 # ------------------------------------------------------------------ #
 
-AUDIO_FORMATS = {
-    "Deep Dive": 1,
-    "Brief": 2,
-    "Critique": 3,
-    "Debate": 4,
-}
-
-AUDIO_LENGTHS = {
-    "Short": 1,
-    "Default": 2,
-    "Long": 3,
-}
-
-VIDEO_FORMATS = {
-    "Explainer": 1,
-    "Brief": 2,
-    "Cinematic": 3,
-}
-
-VIDEO_STYLES = {
-    "Auto Select": 1,
-    "Custom": 2,
-    "Classic": 3,
-    "Whiteboard": 4,
-    "Kawaii": 5,
-    "Anime": 6,
-    "Watercolor": 7,
-    "Retro Print": 8,
-    "Heritage": 9,
-    "Paper Craft": 10,
-}
-
-REPORT_FORMATS = {
-    "Briefing Doc": "briefing_doc",
-    "Study Guide": "study_guide",
-    "Blog Post": "blog_post",
-    "Custom": "custom",
-}
-
-QUIZ_QUANTITIES = {
-    "Fewer": 1,
-    "Standard": 2,
-    "More": 2,
-}
-
-QUIZ_DIFFICULTIES = {
-    "Easy": 1,
-    "Medium": 2,
-    "Hard": 3,
-}
-
-INFOGRAPHIC_ORIENTATIONS = {
-    "Landscape": 1,
-    "Portrait": 2,
-    "Square": 3,
-}
-
-INFOGRAPHIC_DETAILS = {
-    "Concise": 1,
-    "Standard": 2,
-    "Detailed": 3,
-}
-
-INFOGRAPHIC_STYLES = {
-    "Auto Select": 1,
-    "Sketch Note": 2,
-    "Professional": 3,
-    "Bento Grid": 4,
-    "Editorial": 5,
-    "Instructional": 6,
-    "Bricks": 7,
-    "Clay": 8,
-    "Anime": 9,
-    "Kawaii": 10,
-    "Scientific": 11,
-}
-
-SLIDE_FORMATS = {
-    "Detailed Deck": 1,
-    "Presenter Slides": 2,
-}
-
-SLIDE_LENGTHS = {
-    "Default": 1,
-    "Short": 2,
-}
+if _HAS_ENUMS:
+    AUDIO_FORMATS = {
+        "Deep Dive": AudioFormat.DEEP_DIVE, "Brief": AudioFormat.BRIEF,
+        "Critique": AudioFormat.CRITIQUE, "Debate": AudioFormat.DEBATE,
+    }
+    AUDIO_LENGTHS = {
+        "Short": AudioLength.SHORT, "Default": AudioLength.DEFAULT, "Long": AudioLength.LONG,
+    }
+    VIDEO_FORMATS = {
+        "Explainer": VideoFormat.EXPLAINER, "Brief": VideoFormat.BRIEF, "Cinematic": VideoFormat.CINEMATIC,
+    }
+    VIDEO_STYLES = {
+        "Auto Select": VideoStyle.AUTO_SELECT, "Custom": VideoStyle.CUSTOM,
+        "Classic": VideoStyle.CLASSIC, "Whiteboard": VideoStyle.WHITEBOARD,
+        "Kawaii": VideoStyle.KAWAII, "Anime": VideoStyle.ANIME,
+        "Watercolor": VideoStyle.WATERCOLOR, "Retro Print": VideoStyle.RETRO_PRINT,
+        "Heritage": VideoStyle.HERITAGE, "Paper Craft": VideoStyle.PAPER_CRAFT,
+    }
+    REPORT_FORMATS = {
+        "Briefing Doc": ReportFormat.BRIEFING_DOC, "Study Guide": ReportFormat.STUDY_GUIDE,
+        "Blog Post": ReportFormat.BLOG_POST, "Custom": ReportFormat.CUSTOM,
+    }
+    QUIZ_QUANTITIES = {"Fewer": QuizQuantity.FEWER, "Standard": QuizQuantity.STANDARD}
+    QUIZ_DIFFICULTIES = {"Easy": QuizDifficulty.EASY, "Medium": QuizDifficulty.MEDIUM, "Hard": QuizDifficulty.HARD}
+    INFOGRAPHIC_ORIENTATIONS = {
+        "Landscape": InfographicOrientation.LANDSCAPE, "Portrait": InfographicOrientation.PORTRAIT,
+        "Square": InfographicOrientation.SQUARE,
+    }
+    INFOGRAPHIC_DETAILS = {
+        "Concise": InfographicDetail.CONCISE, "Standard": InfographicDetail.STANDARD,
+        "Detailed": InfographicDetail.DETAILED,
+    }
+    INFOGRAPHIC_STYLES = {
+        "Auto Select": InfographicStyle.AUTO_SELECT, "Sketch Note": InfographicStyle.SKETCH_NOTE,
+        "Professional": InfographicStyle.PROFESSIONAL, "Bento Grid": InfographicStyle.BENTO_GRID,
+        "Editorial": InfographicStyle.EDITORIAL, "Instructional": InfographicStyle.INSTRUCTIONAL,
+        "Bricks": InfographicStyle.BRICKS, "Clay": InfographicStyle.CLAY,
+        "Anime": InfographicStyle.ANIME, "Kawaii": InfographicStyle.KAWAII,
+        "Scientific": InfographicStyle.SCIENTIFIC,
+    }
+    SLIDE_FORMATS = {"Detailed Deck": SlideDeckFormat.DETAILED_DECK, "Presenter Slides": SlideDeckFormat.PRESENTER_SLIDES}
+    SLIDE_LENGTHS = {"Default": SlideDeckLength.DEFAULT, "Short": SlideDeckLength.SHORT}
+else:
+    AUDIO_FORMATS = {"Deep Dive": 1, "Brief": 2, "Critique": 3, "Debate": 4}
+    AUDIO_LENGTHS = {"Short": 1, "Default": 2, "Long": 3}
+    VIDEO_FORMATS = {"Explainer": 1, "Brief": 2, "Cinematic": 3}
+    VIDEO_STYLES = {"Auto Select": 1, "Custom": 2, "Classic": 3, "Whiteboard": 4,
+                    "Kawaii": 5, "Anime": 6, "Watercolor": 7, "Retro Print": 8,
+                    "Heritage": 9, "Paper Craft": 10}
+    REPORT_FORMATS = {"Briefing Doc": "briefing_doc", "Study Guide": "study_guide",
+                      "Blog Post": "blog_post", "Custom": "custom"}
+    QUIZ_QUANTITIES = {"Fewer": 1, "Standard": 2}
+    QUIZ_DIFFICULTIES = {"Easy": 1, "Medium": 2, "Hard": 3}
+    INFOGRAPHIC_ORIENTATIONS = {"Landscape": 1, "Portrait": 2, "Square": 3}
+    INFOGRAPHIC_DETAILS = {"Concise": 1, "Standard": 2, "Detailed": 3}
+    INFOGRAPHIC_STYLES = {"Auto Select": 1, "Sketch Note": 2, "Professional": 3,
+                          "Bento Grid": 4, "Editorial": 5, "Instructional": 6,
+                          "Bricks": 7, "Clay": 8, "Anime": 9, "Kawaii": 10, "Scientific": 11}
+    SLIDE_FORMATS = {"Detailed Deck": 1, "Presenter Slides": 2}
+    SLIDE_LENGTHS = {"Default": 1, "Short": 2}
 
 CHAT_MODES = {
     "Default": "default",
@@ -141,7 +131,7 @@ ARTIFACT_DL_TYPES = {
 #  Helper: run blocking call in thread with GUI callback              #
 # ------------------------------------------------------------------ #
 
-def _run_async(frame, fn, args=(), kwargs=None, on_done=None, on_error=None):
+def _run_async(frame, fn, args=(), kwargs=None, on_done=None, on_error=None, on_finally=None):
     """Run fn(*args, **kwargs) in a background thread, call on_done/on_error on GUI thread."""
     kwargs = kwargs or {}
 
@@ -155,6 +145,9 @@ def _run_async(frame, fn, args=(), kwargs=None, on_done=None, on_error=None):
                 frame.after(0, on_error, e)
             else:
                 frame.after(0, lambda: messagebox.showerror("Error", str(e)))
+        finally:
+            if on_finally:
+                frame.after(0, on_finally)
 
     threading.Thread(target=_worker, daemon=True).start()
 
@@ -264,7 +257,7 @@ class NotebookLMTab:
         top.pack(fill="x")
 
         ttk.Label(top, text="Artifact Type:").pack(side="left")
-        self.artifact_type_var = tk.StringVar(value="audio")
+        self.artifact_type_var = tk.StringVar(value="")
         type_combo = ttk.Combobox(
             top, textvariable=self.artifact_type_var, width=15,
             values=ARTIFACT_TYPES, state="readonly"
@@ -280,14 +273,36 @@ class NotebookLMTab:
         self.params_frame = ttk.LabelFrame(parent, text="Parameters", padding=10)
         self.params_frame.pack(fill="x", pady=(10, 0))
 
-        # Instructions
-        ttk.Label(parent, text="Instructions / Prompt:").pack(anchor="w", pady=(10, 0))
+        # Instructions / Prompt with save/load
+        prompt_header = ttk.Frame(parent)
+        prompt_header.pack(fill="x", pady=(10, 0))
+        ttk.Label(prompt_header, text="Instructions / Prompt:").pack(side="left")
+
+        self.saved_prompt_var = tk.StringVar()
+        self.prompt_combo = ttk.Combobox(
+            prompt_header, textvariable=self.saved_prompt_var, width=25, state="readonly"
+        )
+        self.prompt_combo.pack(side="left", padx=(10, 2))
+        self.prompt_combo.bind("<<ComboboxSelected>>", self._load_selected_prompt)
+
+        ttk.Button(prompt_header, text="Load", command=self._load_selected_prompt, width=5).pack(side="left", padx=1)
+        ttk.Button(prompt_header, text="Save", command=self._save_prompt, width=5).pack(side="left", padx=1)
+        ttk.Button(prompt_header, text="Delete", command=self._delete_prompt, width=6).pack(side="left", padx=1)
+
         self.gen_instructions = scrolledtext.ScrolledText(parent, wrap="word", height=4, width=50)
         self.gen_instructions.pack(fill="x", pady=(2, 0))
 
         # Generate button
         self.gen_btn = ttk.Button(parent, text="Generate", command=self._generate)
         self.gen_btn.pack(pady=(10, 0))
+
+        # Load saved prompts and restore last-used
+        self._prompts_file = Path(__file__).parent / "saved_prompts.json"
+        self._saved_prompts = self._load_prompts_file()
+        self._refresh_prompt_list()
+        last_prompt = self._saved_prompts.get("__last_used__", "")
+        if last_prompt:
+            self.gen_instructions.insert("1.0", last_prompt)
 
         # Auto-process option
         self.auto_process_var = tk.BooleanVar(value=False)
@@ -319,6 +334,11 @@ class NotebookLMTab:
     def _on_artifact_type_change(self, event=None):
         self._clear_params()
         atype = self.artifact_type_var.get()
+
+        if not atype:
+            ttk.Label(self.params_frame, text="Select an artifact type to see parameters.",
+                      foreground="gray").grid(row=0, column=0)
+            return
 
         if atype == "audio":
             self._add_param_combo("Format", "audio_format", AUDIO_FORMATS, 0, "Deep Dive")
@@ -385,6 +405,62 @@ class NotebookLMTab:
             params["source_ids"] = [self.sources[i].id for i in selected_src_indices]
 
         return params
+
+    # ------------------------------------------------------------ #
+    #  Prompt management                                             #
+    # ------------------------------------------------------------ #
+
+    def _load_prompts_file(self):
+        if self._prompts_file.exists():
+            try:
+                return json.loads(self._prompts_file.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                pass
+        return {}
+
+    def _save_prompts_file(self):
+        self._prompts_file.write_text(
+            json.dumps(self._saved_prompts, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+    def _refresh_prompt_list(self):
+        names = sorted(k for k in self._saved_prompts if k != "__last_used__")
+        self.prompt_combo["values"] = names
+        if names and not self.saved_prompt_var.get():
+            self.saved_prompt_var.set(names[0])
+
+    def _load_selected_prompt(self, event=None):
+        name = self.saved_prompt_var.get()
+        if name and name in self._saved_prompts:
+            self.gen_instructions.delete("1.0", "end")
+            self.gen_instructions.insert("1.0", self._saved_prompts[name])
+
+    def _save_prompt(self):
+        text = self.gen_instructions.get("1.0", "end").strip()
+        if not text:
+            messagebox.showwarning("Empty", "Write some instructions first.")
+            return
+        name = tk.simpledialog.askstring("Save Prompt", "Prompt name:",
+                                          initialvalue=self.saved_prompt_var.get() or "")
+        if not name:
+            return
+        self._saved_prompts[name] = text
+        self._save_prompts_file()
+        self._refresh_prompt_list()
+        self.saved_prompt_var.set(name)
+        self.status_var.set(f"Prompt '{name}' saved.")
+
+    def _delete_prompt(self):
+        name = self.saved_prompt_var.get()
+        if not name or name not in self._saved_prompts:
+            return
+        if not messagebox.askyesno("Confirm", f"Delete prompt '{name}'?"):
+            return
+        del self._saved_prompts[name]
+        self._save_prompts_file()
+        self.saved_prompt_var.set("")
+        self._refresh_prompt_list()
+        self.status_var.set(f"Prompt '{name}' deleted.")
 
     # ------------------------------------------------------------ #
     #  Chat panel                                                    #
@@ -660,19 +736,29 @@ class NotebookLMTab:
             return
 
         atype = self.artifact_type_var.get()
+        if not atype:
+            messagebox.showwarning("No type", "Select an artifact type first.")
+            return
+
         params = self._get_gen_params()
+
+        # Remember current prompt for next session
+        current_prompt = self.gen_instructions.get("1.0", "end").strip()
+        self._saved_prompts["__last_used__"] = current_prompt
+        self._save_prompts_file()
+
         self.status_var.set(f"Generating {atype}... (this may take a while)")
-        self.gen_btn.config(state="disabled")
 
         import notebooklm_wrapper as w
 
         def _done(status):
-            self.gen_btn.config(state="normal")
             self.status_var.set(f"Generated {atype} successfully!")
-            self._list_artifacts_for_nb(self.selected_nb_id)
+            try:
+                self._list_artifacts_for_nb(self.selected_nb_id)
+            except Exception:
+                pass
 
         def _err(e):
-            self.gen_btn.config(state="normal")
             self.status_var.set(f"Generation failed: {e}")
             messagebox.showerror("Generation Error", str(e))
 

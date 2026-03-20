@@ -2,9 +2,11 @@
 
 An all-in-one Python toolkit for Google NotebookLM. Three tools in one app:
 
-1. **PDF Cleaner** — Remove watermarks from NotebookLM PDFs and export as 4K PNGs
-2. **Audio Transcriber** — Convert `.m4a` audio to text using local Whisper AI
-3. **NotebookLM Client** — Control NotebookLM directly: create notebooks, add sources, generate content, chat
+1. **NotebookLM Client** — Control NotebookLM directly: generate content with **prompt management** (save, load, reuse), auto-remove watermarks, chat, and more
+2. **Audio Transcriber** — Convert `.m4a` audio to text using local Whisper AI, then **send directly to NotebookLM** as sources
+3. **PDF Cleaner** — **Auto-remove watermarks** from NotebookLM PDFs and export as 4K PNGs
+
+**Key features:** Automatic watermark removal, prompt save/load for repeatable generation, send transcripts directly to NotebookLM as sources, full API control.
 
 Works on **macOS** and **Windows**. GUI + CLI.
 
@@ -63,46 +65,67 @@ venv\Scripts\python.exe app_gui.py
 
 ## Features
 
-### Tab 1: PDF Cleaner
+### Tab 1: NotebookLM Client (Optional)
 
-Removes the "NotebookLM" watermark from exported PDFs and saves each page as a high-resolution PNG.
+Control Google NotebookLM directly from the app. Powered by [notebooklm-py](https://github.com/teng-lin/notebooklm-py).
 
-**How it works:**
-1. Detects the watermark using text search + pixel-based detection
-2. Removes it with OpenCV inpainting (reconstructs the background — not a cover-up)
-3. Renders each page at 2x the target resolution (supersample)
-4. Downscales with Lanczos for sharp, anti-aliased output
-5. Applies mild sharpening for crisp text
+> **Requires:** `pip install "notebooklm-py[browser]"` + `playwright install chromium`
+> The tab only appears if `notebooklm-py` is installed. All other features work without it.
 
-**GUI:** Select PDFs or a folder → choose output folder → set resolution → click Start
+#### First Time Setup
 
-**CLI:**
-```bash
-# Single PDF → 4K PNGs
-python pdf_cleaner_core.py slides.pdf
+1. Click **"Login (Browser)"** — your installed Chrome opens (not Playwright's Chromium, so Google won't block it)
+2. Sign in with your Google account that has NotebookLM access
+3. Close the browser when done — cookies are saved to `~/.notebooklm/`
+4. Click **"List"** to load your notebooks
 
-# Folder of PDFs with custom settings
-python pdf_cleaner_core.py ./my_pdfs/ -o ./output --resolution 3840 --supersample 2
+Cookies expire periodically — re-login when needed.
 
-# All options
-python pdf_cleaner_core.py input.pdf -o output \
-    --resolution 3840 \
-    --supersample 2 \
-    --sharpness 1.3 \
-    --workers 4 \
-    --margin-x 300 \
-    --margin-y 65
-```
+#### What You Can Do
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `-o, --output` | `cleaned_pngs` | Output directory |
-| `--resolution` | `3840` | Long-edge pixels (1920 / 2560 / 3840 / 5120) |
-| `--supersample` | `2` | Render at Nx, downscale with Lanczos |
-| `--sharpness` | `1.3` | Sharpness factor (1.0 = off) |
-| `--workers` | auto | Parallel workers (default: min of CPU count, 4) |
-| `--margin-x` | `300` | Watermark search area from right edge (px) |
-| `--margin-y` | `65` | Watermark search area from bottom edge (px) |
+**Manage Notebooks:**
+- Create, list, and delete notebooks
+- Click a notebook to load its sources and artifacts
+
+**Manage Sources:**
+- Add web URLs or YouTube links
+- Upload files (PDF, DOCX, Markdown, CSV, TXT)
+- Add pasted text with a title
+- Delete sources
+
+**Generate Artifacts** — 9 types with full parameter control:
+
+| Artifact | Parameters |
+|----------|-----------|
+| **Audio Overview** | Format: Deep Dive / Brief / Critique / Debate | Length: Short / Default / Long | Language |
+| **Video** | Format: Explainer / Brief / Cinematic | Style: Auto / Classic / Whiteboard / Kawaii / Anime / Watercolor / Retro Print / Heritage / Paper Craft / Custom | Language |
+| **Report** | Format: Briefing Doc / Study Guide / Blog Post / Custom | Language |
+| **Quiz** | Quantity: Fewer / Standard | Difficulty: Easy / Medium / Hard |
+| **Flashcards** | Quantity: Fewer / Standard | Difficulty: Easy / Medium / Hard |
+| **Infographic** | Orientation: Landscape / Portrait / Square | Detail: Concise / Standard / Detailed | Style: Auto / Sketch Note / Professional / Bento Grid / Editorial / Instructional / Bricks / Clay / Anime / Kawaii / Scientific | Language |
+| **Slide Deck** | Format: Detailed Deck / Presenter Slides | Length: Default / Short | Language |
+| **Data Table** | Language |
+| **Mind Map** | *(no extra parameters)* |
+
+All artifact types accept an optional **Instructions** text field for custom prompts.
+Select specific sources in the source list to scope generation to those sources only.
+
+**Prompt Management:**
+- **Save** frequently used prompts with a name for easy reuse
+- **Load** any saved prompt from the dropdown
+- **Delete** prompts you no longer need
+- The last-used prompt is **automatically remembered** between sessions
+- Prompts are stored in `saved_prompts.json` alongside the app
+
+**Chat:**
+- Ask questions about your sources with full citation references
+- Chat modes: Default / Learning Guide / Concise / Detailed
+- Follow-up conversations (maintains context)
+- Select specific sources to focus the chat
+
+**Download:**
+- Download any generated artifact to a local file
+- Optional auto-process: downloaded slide deck PDFs can be cleaned and exported as 4K PNGs via the PDF Cleaner tab
 
 ---
 
@@ -115,7 +138,9 @@ Converts `.m4a` audio files to text using [OpenAI Whisper](https://github.com/op
 - Each part from 2 onward includes a configurable overlap (default 500 chars) from the previous part for context continuity
 - Navigate chunks in the GUI, copy individual parts to clipboard
 
-**GUI:** Select `.m4a` file → pick Whisper model → click Transcribe → adjust split settings → copy or save
+**Send to NotebookLM:** After splitting, click **"Send to NotebookLM"** to upload all parts directly as text sources to any notebook. Each part is named `filename_part_1`, `filename_part_2`, etc.
+
+**GUI:** Select `.m4a` file → pick Whisper model → click Transcribe → adjust split settings → copy, save, or send to NotebookLM
 
 **CLI:**
 ```bash
@@ -160,60 +185,46 @@ Models download automatically on first use and are cached locally.
 
 ---
 
-### Tab 3: NotebookLM Client (Optional)
+### Tab 3: PDF Cleaner
 
-Control Google NotebookLM directly from the app. Powered by [notebooklm-py](https://github.com/teng-lin/notebooklm-py).
+Removes the "NotebookLM" watermark from exported PDFs and saves each page as a high-resolution PNG. Output folder defaults to the same directory as the input files.
 
-> **Requires:** `pip install "notebooklm-py[browser]"` + `playwright install chromium`
-> The tab only appears if `notebooklm-py` is installed. All other features work without it.
+**How it works:**
+1. Detects the watermark using text search + pixel-based detection
+2. Removes it with OpenCV inpainting (reconstructs the background — not a cover-up)
+3. Renders each page at 2x the target resolution (supersample)
+4. Downscales with Lanczos for sharp, anti-aliased output
+5. Applies mild sharpening for crisp text
 
-#### First Time Setup
+**GUI:** Select PDFs or a folder → output auto-set to same folder → set resolution → click Start
 
-1. Click **"Login (Browser)"** — a Chromium window opens
-2. Sign in with your Google account that has NotebookLM access
-3. Close the browser when done — cookies are saved to `~/.notebooklm/`
-4. Click **"List"** to load your notebooks
+**CLI:**
+```bash
+# Single PDF → 4K PNGs
+python pdf_cleaner_core.py slides.pdf
 
-Cookies expire periodically — re-login when needed.
+# Folder of PDFs with custom settings
+python pdf_cleaner_core.py ./my_pdfs/ -o ./output --resolution 3840 --supersample 2
 
-#### What You Can Do
+# All options
+python pdf_cleaner_core.py input.pdf -o output \
+    --resolution 3840 \
+    --supersample 2 \
+    --sharpness 1.3 \
+    --workers 4 \
+    --margin-x 300 \
+    --margin-y 65
+```
 
-**Manage Notebooks:**
-- Create, list, and delete notebooks
-- Click a notebook to load its sources and artifacts
-
-**Manage Sources:**
-- Add web URLs or YouTube links
-- Upload files (PDF, DOCX, Markdown, CSV, TXT)
-- Add pasted text with a title
-- Delete sources
-
-**Generate Artifacts** — 9 types with full parameter control:
-
-| Artifact | Parameters |
-|----------|-----------|
-| **Audio Overview** | Format: Deep Dive / Brief / Critique / Debate | Length: Short / Default / Long | Language |
-| **Video** | Format: Explainer / Brief / Cinematic | Style: Auto / Classic / Whiteboard / Kawaii / Anime / Watercolor / Retro Print / Heritage / Paper Craft / Custom | Language |
-| **Report** | Format: Briefing Doc / Study Guide / Blog Post / Custom | Language |
-| **Quiz** | Quantity: Fewer / Standard / More | Difficulty: Easy / Medium / Hard |
-| **Flashcards** | Quantity: Fewer / Standard / More | Difficulty: Easy / Medium / Hard |
-| **Infographic** | Orientation: Landscape / Portrait / Square | Detail: Concise / Standard / Detailed | Style: Auto / Sketch Note / Professional / Bento Grid / Editorial / Instructional / Bricks / Clay / Anime / Kawaii / Scientific | Language |
-| **Slide Deck** | Format: Detailed Deck / Presenter Slides | Length: Default / Short | Language |
-| **Data Table** | Language |
-| **Mind Map** | *(no extra parameters)* |
-
-All artifact types accept an optional **Instructions** text field for custom prompts.
-Select specific sources in the source list to scope generation to those sources only.
-
-**Chat:**
-- Ask questions about your sources with full citation references
-- Chat modes: Default / Learning Guide / Concise / Detailed
-- Follow-up conversations (maintains context)
-- Select specific sources to focus the chat
-
-**Download:**
-- Download any generated artifact to a local file
-- Optional auto-process: downloaded slide deck PDFs can be cleaned and exported as 4K PNGs via the PDF Cleaner tab
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-o, --output` | `cleaned_pngs` | Output directory |
+| `--resolution` | `3840` | Long-edge pixels (1920 / 2560 / 3840 / 5120) |
+| `--supersample` | `2` | Render at Nx, downscale with Lanczos |
+| `--sharpness` | `1.3` | Sharpness factor (1.0 = off) |
+| `--workers` | auto | Parallel workers (default: min of CPU count, 4) |
+| `--margin-x` | `300` | Watermark search area from right edge (px) |
+| `--margin-y` | `65` | Watermark search area from bottom edge (px) |
 
 ---
 
@@ -263,10 +274,11 @@ python -c "import torch; print('CUDA:', torch.cuda.is_available()); print('MPS:'
 ```
 notebooklm-toolkit/
 ├── app_gui.py              # GUI entry point (tkinter, 3 tabs)
-├── pdf_cleaner_core.py     # PDF watermark removal + 4K PNG export (GUI + CLI)
-├── audio_transcriber.py    # Whisper transcription + text splitting (GUI + CLI)
-├── notebooklm_tab.py       # NotebookLM GUI tab
+├── notebooklm_tab.py       # NotebookLM GUI tab + prompt management
 ├── notebooklm_wrapper.py   # Async-to-sync bridge for notebooklm-py
+├── audio_transcriber.py    # Whisper transcription + text splitting (GUI + CLI)
+├── pdf_cleaner_core.py     # PDF watermark removal + 4K PNG export (GUI + CLI)
+├── saved_prompts.json      # Saved generation prompts (auto-created)
 ├── requirements.txt        # Core dependencies
 └── README.md
 ```

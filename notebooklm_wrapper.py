@@ -104,14 +104,22 @@ def login():
     storage_path = get_storage_path()
     storage_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Use a persistent profile dir so Google doesn't flag the browser
+    profile_dir = storage_path.parent / "browser_profile"
+    profile_dir.mkdir(parents=True, exist_ok=True)
+
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        context = browser.new_context()
-        page = context.new_page()
+        # Use the user's installed Chrome instead of Playwright's Chromium
+        # This avoids Google's "This browser or app may not be secure" block
+        browser = p.chromium.launch_persistent_context(
+            user_data_dir=str(profile_dir),
+            channel="chrome",
+            headless=False,
+        )
+        page = browser.pages[0] if browser.pages else browser.new_page()
         page.goto("https://notebooklm.google.com/")
 
         # Wait for user to log in — detect by checking for the main app to load
-        # The URL will stay on notebooklm.google.com after login
         try:
             page.wait_for_url("**/notebooklm.google.com/**", timeout=300000)
             # Wait for the page to fully load (notebooks visible)
@@ -119,15 +127,14 @@ def login():
             # Check if we're past the login screen
             for _ in range(60):
                 if "accounts.google.com" not in page.url:
-                    # Give extra time for cookies to settle
                     page.wait_for_timeout(2000)
                     break
                 page.wait_for_timeout(5000)
         except Exception:
             pass
 
-        # Save browser state (cookies)
-        context.storage_state(path=str(storage_path))
+        # Save browser state (cookies) for API use
+        browser.storage_state(path=str(storage_path))
         browser.close()
 
     if not storage_path.exists():
@@ -213,10 +220,15 @@ def generate_artifact(notebook_id, artifact_type, params, auth_path=None):
             status = await gen_fn(notebook_id, **params)
             if artifact_type == "mind_map":
                 return status  # mind_map returns dict directly
-            completed = await client.artifacts.wait_for_completion(
-                notebook_id, status.task_id, timeout=600
-            )
-            return completed
+            # Wait for completion with a reasonable timeout
+            try:
+                completed = await client.artifacts.wait_for_completion(
+                    notebook_id, status.task_id, timeout=300
+                )
+                return completed
+            except Exception:
+                # If wait fails, still return the initial status
+                return status
     return bridge.run(_do())
 
 

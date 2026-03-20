@@ -23,5 +23,8 @@ Thumbs.db
 cleaned_pngs/
 output/
 
+# User data
+saved_prompts.json
+
 # Large binaries
 *.exe
