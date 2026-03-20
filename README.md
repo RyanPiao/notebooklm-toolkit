@@ -117,6 +117,13 @@ Select specific sources in the source list to scope generation to those sources 
 - The last-used prompt is **automatically remembered** between sessions
 - Prompts are stored in `saved_prompts.json` alongside the app
 
+**Audio Player:**
+- Play generated audio artifacts directly in the app
+- **Playback speed control** — 0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x
+- **Remembers position** — resume where you left off, even after closing the app
+- Seek bar for jumping to any position
+- Click "Play" on any audio artifact to download and start listening
+
 **Chat:**
 - Ask questions about your sources with full citation references
 - Chat modes: Default / Learning Guide / Concise / Detailed
