@@ -163,13 +163,15 @@ Install PyTorch with CUDA support. Pick the command matching your CUDA version (
 
 **CUDA 12.8:**
 ```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+pip install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 ```
 
 **CUDA 12.6:**
 ```bash
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+pip install --force-reinstall torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
 ```
+
+> **Important:** Use `--force-reinstall` because `pip install openai-whisper` pulls in CPU-only torch as a dependency. Without `--force-reinstall`, pip may skip the CUDA version since torch is already installed.
 
 > Check [pytorch.org/get-started/locally](https://pytorch.org/get-started/locally/) for the latest install commands if the above URLs stop working.
 

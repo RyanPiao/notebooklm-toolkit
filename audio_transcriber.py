@@ -99,13 +99,25 @@ def transcribe_audio(
     if ext != ".m4a":
         raise ValueError(f"Unsupported format: {ext}. Only .m4a is supported.")
 
-    if progress_callback:
-        progress_callback(f"Loading Whisper '{cfg.model_name}' model...")
+    # Detect best available device
+    import torch
+    if torch.cuda.is_available():
+        device = "cuda"
+        device_name = torch.cuda.get_device_name(0)
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = "mps"
+        device_name = "Apple Silicon (MPS)"
+    else:
+        device = "cpu"
+        device_name = "CPU"
 
-    model = whisper.load_model(cfg.model_name)
+    if progress_callback:
+        progress_callback(f"Loading Whisper '{cfg.model_name}' on {device_name}...")
+
+    model = whisper.load_model(cfg.model_name, device=device)
 
     if progress_callback:
-        progress_callback("Transcribing audio (this may take several minutes)...")
+        progress_callback(f"Transcribing on {device_name} (this may take several minutes)...")
 
     result = model.transcribe(
         audio_path,
