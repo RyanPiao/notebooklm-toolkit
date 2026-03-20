@@ -241,15 +241,11 @@ class NotebookLMTab:
         art_btn_row.pack(fill="x")
         ttk.Button(art_btn_row, text="Refresh", command=self._list_artifacts, width=8).pack(side="left", padx=2)
         ttk.Button(art_btn_row, text="Download", command=self._download_artifact, width=8).pack(side="left", padx=2)
-        ttk.Button(art_btn_row, text="Play", command=self._play_selected_artifact, width=5).pack(side="left", padx=2)
         ttk.Button(art_btn_row, text="Delete", command=self._delete_artifact, width=6).pack(side="left", padx=2)
 
         self.art_listbox = tk.Listbox(art_frame, height=5, exportselection=False)
-        self.art_listbox.pack(fill="x", pady=(5, 0))
+        self.art_listbox.pack(fill="both", expand=True, pady=(5, 0))
         self.art_listbox.bind("<Double-1>", lambda e: self._play_selected_artifact())
-
-        # --- Audio Player (expand to fill remaining space) ---
-        self._build_audio_player(left)
 
         # --- RIGHT PANEL: Tabbed actions ---
         right = ttk.Frame(paned, padding=5)
@@ -271,6 +267,9 @@ class NotebookLMTab:
         # Status bar
         self.status_var = tk.StringVar(value="Login to get started.")
         ttk.Label(f, textvariable=self.status_var, foreground="gray").pack(fill="x", pady=(5, 0))
+
+        # --- Audio Player (full width at bottom) ---
+        self._build_audio_player(f)
 
     # ------------------------------------------------------------ #
     #  Generate panel                                                #
@@ -874,16 +873,21 @@ class NotebookLMTab:
     # ------------------------------------------------------------ #
 
     def _build_audio_player(self, parent):
-        """Build the audio player panel."""
-        player_frame = ttk.LabelFrame(parent, text="Audio Player", padding=8)
-        player_frame.pack(fill="both", expand=True, pady=(8, 0))
+        """Build the audio player panel — full width bar at the bottom."""
+        player_frame = ttk.LabelFrame(parent, text="Audio Player", padding=5)
+        player_frame.pack(fill="x", pady=(5, 0))
 
-        # Now playing label
-        self._player_title_var = tk.StringVar(value="No audio loaded")
-        ttk.Label(player_frame, textvariable=self._player_title_var,
-                  foreground="gray").pack(fill="x")
+        # Row 1: Title + Time
+        top_row = ttk.Frame(player_frame)
+        top_row.pack(fill="x")
 
-        # Progress bar (clickable for seeking)
+        self._player_title_var = tk.StringVar(value="No audio loaded — double-click an [audio] artifact to play")
+        ttk.Label(top_row, textvariable=self._player_title_var).pack(side="left")
+
+        self._player_time_var = tk.StringVar(value="")
+        ttk.Label(top_row, textvariable=self._player_time_var).pack(side="right")
+
+        # Row 2: Seek bar (full width)
         self._player_progress_var = tk.DoubleVar(value=0)
         self._player_scale = ttk.Scale(
             player_frame, from_=0, to=100, orient="horizontal",
@@ -891,11 +895,7 @@ class NotebookLMTab:
         )
         self._player_scale.pack(fill="x", pady=(2, 0))
 
-        # Time label
-        self._player_time_var = tk.StringVar(value="0:00 / 0:00")
-        ttk.Label(player_frame, textvariable=self._player_time_var).pack(fill="x")
-
-        # Controls row
+        # Row 3: Controls
         ctrl = ttk.Frame(player_frame)
         ctrl.pack(fill="x", pady=(2, 0))
 
@@ -904,8 +904,7 @@ class NotebookLMTab:
 
         ttk.Button(ctrl, text="Stop", command=self._stop_audio, width=5).pack(side="left", padx=2)
 
-        # Speed control
-        ttk.Label(ctrl, text="Speed:").pack(side="left", padx=(10, 2))
+        ttk.Label(ctrl, text="Speed:").pack(side="left", padx=(15, 2))
         self._speed_var = tk.StringVar(value="1.0x")
         speed_combo = ttk.Combobox(
             ctrl, textvariable=self._speed_var, width=5,
@@ -998,10 +997,20 @@ class NotebookLMTab:
 
         artifact = self.artifacts[sel[0]]
 
-        # Check if it's an audio artifact
-        atype_code = artifact._artifact_type if hasattr(artifact, '_artifact_type') else None
-        if atype_code != 1:
-            messagebox.showwarning("Not audio", "Select an audio artifact to play.")
+        # Check if it's an audio artifact — try multiple ways
+        is_audio = False
+        if hasattr(artifact, 'kind'):
+            is_audio = (getattr(artifact.kind, 'value', '') == 'audio'
+                        or str(artifact.kind) == 'audio')
+        if not is_audio and hasattr(artifact, '_artifact_type'):
+            is_audio = artifact._artifact_type == 1
+        if not is_audio:
+            # Also check by listbox text
+            text = self.art_listbox.get(sel[0])
+            is_audio = text.startswith("[audio]")
+
+        if not is_audio:
+            messagebox.showwarning("Not audio", "Select an [audio] artifact to play.")
             return
 
         # Stop current playback and save position before switching
