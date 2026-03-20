@@ -25,8 +25,3 @@ output/
 
 # Large binaries
 *.exe
-
-# Reference code (not part of this project)
-notebooklm-watermark-remover/
-transcribe-m4a-to-text-main/
-clean_pdf.ipynb
