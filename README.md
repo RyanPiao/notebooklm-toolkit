@@ -16,8 +16,9 @@ Works on **macOS** and **Windows**. Includes both a GUI and CLI.
 ### Audio Transcriber
 - Transcribes `.m4a` audio to text using [OpenAI Whisper](https://github.com/openai/whisper) running locally (no cloud API, no Docker)
 - Best suited for 40–50 minute recordings (~80 MB files) with the `small` model
-- Split output text by character count (useful for pasting into tools with limits)
-- Chunk navigation in GUI with copy-to-clipboard support
+- Split text **after** transcription into N equal parts (e.g., split into 2, 3, 4 parts)
+- Also supports splitting by max character count via CLI
+- Chunk navigation in GUI with copy-to-clipboard per part
 - Selectable Whisper model: `tiny`, `base`, `small`, `medium`, `large`
 
 ## Installation
@@ -100,14 +101,17 @@ python pdf_cleaner_core.py input.pdf -o output --resolution 3840 --supersample 2
 # Basic transcription
 python audio_transcriber.py recording.m4a
 
-# With text splitting (every 2000 characters)
-python audio_transcriber.py recording.m4a --split 2000
+# Split into 3 equal parts
+python audio_transcriber.py recording.m4a --split-parts 3
+
+# Split by max character count
+python audio_transcriber.py recording.m4a --split-chars 2000
 
 # Use a different model
 python audio_transcriber.py recording.m4a --model medium
 
 # Custom output path
-python audio_transcriber.py recording.m4a -o transcript.txt --split 3000
+python audio_transcriber.py recording.m4a -o transcript.txt --split-parts 4
 ```
 
 **Options:**
@@ -116,9 +120,10 @@ python audio_transcriber.py recording.m4a -o transcript.txt --split 3000
 | `-o, --output` | `<input_name>.txt` | Output file path |
 | `--model` | `small` | Whisper model (`tiny`, `base`, `small`, `medium`, `large`) |
 | `--language` | `en` | Audio language code |
-| `--split` | `0` | Split text every N characters (0 = no split) |
+| `--split-parts` | `0` | Split into N equal parts (e.g., `3` = three ~equal chunks) |
+| `--split-chars` | `0` | Split every N characters (e.g., `2000`) |
 
-When `--split` is used, output files are named `transcript_001.txt`, `transcript_002.txt`, etc.
+`--split-parts` and `--split-chars` are mutually exclusive. When either is used, output files are named `transcript_001.txt`, `transcript_002.txt`, etc.
 
 ## Whisper Model Guide
 

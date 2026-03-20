@@ -209,7 +209,9 @@ class AudioTranscriberTab:
     def __init__(self, parent):
         self.frame = ttk.Frame(parent, padding=15)
         self.running = False
-        self.result = None
+        self.full_text = ""       # raw transcription text
+        self.chunks: list = []    # current split chunks
+        self.current_chunk = 0
         self._build_ui()
 
     def _build_ui(self):
@@ -225,8 +227,8 @@ class AudioTranscriberTab:
             row=0, column=2, sticky="e"
         )
 
-        # --- Settings ---
-        settings = ttk.LabelFrame(f, text="Settings", padding=10)
+        # --- Transcription settings (before transcribe) ---
+        settings = ttk.LabelFrame(f, text="Transcription Settings", padding=10)
         settings.grid(row=1, column=0, columnspan=3, sticky="ew", pady=(12, 0))
 
         ttk.Label(settings, text="Model:").grid(row=0, column=0, sticky="w")
@@ -239,76 +241,102 @@ class AudioTranscriberTab:
         ttk.Label(settings, text="Language:").grid(row=0, column=2, sticky="w")
         self.language_var = tk.StringVar(value="en")
         ttk.Entry(settings, textvariable=self.language_var, width=6).grid(
-            row=0, column=3, sticky="w", padx=(5, 20)
+            row=0, column=3, sticky="w", padx=(5, 0)
         )
 
-        ttk.Label(settings, text="Split by chars:").grid(row=0, column=4, sticky="w")
-        self.split_var = tk.IntVar(value=0)
-        ttk.Spinbox(
-            settings, textvariable=self.split_var, from_=0, to=100000,
-            increment=500, width=8
-        ).grid(row=0, column=5, sticky="w", padx=(5, 0))
-        ttk.Label(settings, text="(0 = no split)", foreground="gray").grid(
-            row=0, column=6, sticky="w", padx=(5, 0)
-        )
-
-        # --- Status ---
+        # --- Status & progress ---
         self.status_var = tk.StringVar(value="Select an .m4a file to begin.")
         ttk.Label(f, textvariable=self.status_var, foreground="gray").grid(
             row=2, column=0, columnspan=3, sticky="w", pady=(10, 0)
         )
 
-        # --- Progress ---
         self.progress = ttk.Progressbar(f, mode="indeterminate", length=500)
         self.progress.grid(row=3, column=0, columnspan=3, sticky="ew", pady=(8, 0))
 
-        # --- Buttons ---
-        btn_row = ttk.Frame(f)
-        btn_row.grid(row=4, column=0, columnspan=3, pady=(12, 0))
+        # --- Transcribe button ---
         self.transcribe_btn = ttk.Button(
-            btn_row, text="Transcribe", command=self._start_transcribe
+            f, text="Transcribe", command=self._start_transcribe
         )
-        self.transcribe_btn.pack(side="left", padx=5)
-        self.save_btn = ttk.Button(
-            btn_row, text="Save Text", command=self._save_text, state="disabled"
-        )
-        self.save_btn.pack(side="left", padx=5)
-        self.copy_btn = ttk.Button(
-            btn_row, text="Copy All", command=self._copy_all, state="disabled"
-        )
-        self.copy_btn.pack(side="left", padx=5)
+        self.transcribe_btn.grid(row=4, column=0, columnspan=3, pady=(10, 0))
 
-        # --- Text output ---
-        ttk.Label(f, text="Transcription:").grid(
-            row=5, column=0, columnspan=3, sticky="w", pady=(12, 0)
-        )
+        # --- Split controls (shown after transcription) ---
+        self.split_frame = ttk.LabelFrame(f, text="Split Text", padding=10)
+        self.split_frame.grid(row=5, column=0, columnspan=3, sticky="ew", pady=(12, 0))
 
-        # Chunk navigation
-        self.chunk_frame = ttk.Frame(f)
-        self.chunk_frame.grid(row=6, column=0, columnspan=3, sticky="ew")
+        ttk.Label(self.split_frame, text="Split into").grid(row=0, column=0, sticky="w")
+        self.split_parts_var = tk.IntVar(value=1)
+        self.split_spinbox = ttk.Spinbox(
+            self.split_frame, textvariable=self.split_parts_var,
+            from_=1, to=50, increment=1, width=5
+        )
+        self.split_spinbox.grid(row=0, column=1, sticky="w", padx=(5, 5))
+        ttk.Label(self.split_frame, text="equal parts").grid(row=0, column=2, sticky="w")
+
+        self.apply_split_btn = ttk.Button(
+            self.split_frame, text="Apply Split", command=self._apply_split
+        )
+        self.apply_split_btn.grid(row=0, column=3, sticky="w", padx=(15, 10))
+
+        self.chars_info_var = tk.StringVar()
+        ttk.Label(
+            self.split_frame, textvariable=self.chars_info_var, foreground="gray"
+        ).grid(row=0, column=4, sticky="w", padx=(5, 0))
+
+        # Initially disable split controls
+        self._set_split_enabled(False)
+
+        # --- Chunk navigation & action buttons ---
+        nav_frame = ttk.Frame(f)
+        nav_frame.grid(row=6, column=0, columnspan=3, sticky="ew", pady=(8, 0))
 
         self.chunk_label = tk.StringVar()
-        ttk.Label(self.chunk_frame, textvariable=self.chunk_label).pack(side="left")
+        ttk.Label(nav_frame, textvariable=self.chunk_label).pack(side="left")
         self.prev_btn = ttk.Button(
-            self.chunk_frame, text="< Prev", command=self._prev_chunk, state="disabled"
+            nav_frame, text="< Prev", command=self._prev_chunk, state="disabled"
         )
         self.prev_btn.pack(side="left", padx=5)
         self.next_btn = ttk.Button(
-            self.chunk_frame, text="Next >", command=self._next_chunk, state="disabled"
+            nav_frame, text="Next >", command=self._next_chunk, state="disabled"
         )
         self.next_btn.pack(side="left", padx=5)
         self.copy_chunk_btn = ttk.Button(
-            self.chunk_frame, text="Copy Chunk", command=self._copy_chunk, state="disabled"
+            nav_frame, text="Copy Chunk", command=self._copy_chunk, state="disabled"
         )
         self.copy_chunk_btn.pack(side="left", padx=5)
 
+        # Spacer
+        ttk.Frame(nav_frame).pack(side="left", expand=True)
+
+        self.copy_btn = ttk.Button(
+            nav_frame, text="Copy All", command=self._copy_all, state="disabled"
+        )
+        self.copy_btn.pack(side="right", padx=5)
+        self.save_btn = ttk.Button(
+            nav_frame, text="Save", command=self._save_text, state="disabled"
+        )
+        self.save_btn.pack(side="right", padx=5)
+
+        # --- Text output ---
         self.text_area = scrolledtext.ScrolledText(f, wrap="word", height=16, width=70)
         self.text_area.grid(row=7, column=0, columnspan=3, sticky="nsew", pady=(4, 0))
 
         f.columnconfigure(1, weight=1)
         f.rowconfigure(7, weight=1)
 
-        self.current_chunk = 0
+    def _set_split_enabled(self, enabled):
+        state = "normal" if enabled else "disabled"
+        self.split_spinbox.config(state=state)
+        self.apply_split_btn.config(state=state)
+
+    def _set_nav_enabled(self, has_chunks):
+        if has_chunks:
+            self.prev_btn.config(state="normal")
+            self.next_btn.config(state="normal")
+            self.copy_chunk_btn.config(state="normal")
+        else:
+            self.prev_btn.config(state="disabled")
+            self.next_btn.config(state="disabled")
+            self.copy_chunk_btn.config(state="disabled")
 
     def _pick_file(self):
         path = filedialog.askopenfilename(
@@ -330,6 +358,8 @@ class AudioTranscriberTab:
         self.transcribe_btn.config(state="disabled")
         self.save_btn.config(state="disabled")
         self.copy_btn.config(state="disabled")
+        self._set_split_enabled(False)
+        self._set_nav_enabled(False)
         self.progress.start(10)
         self.text_area.delete("1.0", "end")
 
@@ -342,7 +372,6 @@ class AudioTranscriberTab:
         cfg = TranscriberConfig(
             model_name=self.model_var.get(),
             language=self.language_var.get(),
-            split_chars=self.split_var.get(),
         )
 
         def on_status(msg):
@@ -364,44 +393,63 @@ class AudioTranscriberTab:
             messagebox.showerror("Transcription Error", error)
             return
 
-        self.result = result
+        self.full_text = result["text"]
+        self.chunks = [self.full_text]
         self.current_chunk = 0
 
-        chars = len(result["text"])
-        chunks = len(result["chunks"])
+        total_chars = len(self.full_text)
         segs = len(result["segments"])
-        self.status_var.set(f"Done! {chars} chars, {segs} segments, {chunks} chunk(s)")
+        self.status_var.set(f"Done! {total_chars} chars, {segs} segments. Use Split to divide the text.")
+        self.chars_info_var.set(f"Total: {total_chars} chars")
 
+        # Enable post-transcription controls
         self.save_btn.config(state="normal")
         self.copy_btn.config(state="normal")
-
-        if chunks > 1:
-            self.prev_btn.config(state="normal")
-            self.next_btn.config(state="normal")
-            self.copy_chunk_btn.config(state="normal")
-        else:
-            self.prev_btn.config(state="disabled")
-            self.next_btn.config(state="disabled")
-            self.copy_chunk_btn.config(state="disabled")
+        self._set_split_enabled(True)
+        self.split_parts_var.set(1)
 
         self._show_chunk(0)
 
-    def _show_chunk(self, idx):
-        if not self.result:
+    def _apply_split(self):
+        """Re-split the full text into N equal parts."""
+        if not self.full_text:
             return
-        chunks = self.result["chunks"]
-        idx = max(0, min(idx, len(chunks) - 1))
+
+        from audio_transcriber import split_text_into_parts
+
+        num_parts = self.split_parts_var.get()
+        if num_parts < 1:
+            num_parts = 1
+            self.split_parts_var.set(1)
+
+        self.chunks = split_text_into_parts(self.full_text, num_parts)
+        self.current_chunk = 0
+
+        total_chars = len(self.full_text)
+        avg_chars = total_chars // len(self.chunks) if self.chunks else 0
+        self.chars_info_var.set(
+            f"Total: {total_chars} chars | {len(self.chunks)} parts, ~{avg_chars} chars each"
+        )
+        self.status_var.set(f"Split into {len(self.chunks)} equal parts")
+
+        self._set_nav_enabled(len(self.chunks) > 1)
+        self._show_chunk(0)
+
+    def _show_chunk(self, idx):
+        if not self.chunks:
+            return
+        idx = max(0, min(idx, len(self.chunks) - 1))
         self.current_chunk = idx
 
         self.text_area.delete("1.0", "end")
-        self.text_area.insert("1.0", chunks[idx])
+        self.text_area.insert("1.0", self.chunks[idx])
 
-        if len(chunks) > 1:
+        if len(self.chunks) > 1:
             self.chunk_label.set(
-                f"Chunk {idx + 1}/{len(chunks)}  ({len(chunks[idx])} chars)"
+                f"Part {idx + 1}/{len(self.chunks)}  ({len(self.chunks[idx])} chars)"
             )
         else:
-            self.chunk_label.set(f"{len(chunks[0])} chars")
+            self.chunk_label.set(f"{len(self.chunks[0])} chars")
 
     def _prev_chunk(self):
         self._show_chunk(self.current_chunk - 1)
@@ -410,20 +458,20 @@ class AudioTranscriberTab:
         self._show_chunk(self.current_chunk + 1)
 
     def _copy_all(self):
-        if self.result:
+        if self.full_text:
             self.frame.clipboard_clear()
-            self.frame.clipboard_append(self.result["text"])
+            self.frame.clipboard_append(self.full_text)
             self.status_var.set("Full text copied to clipboard.")
 
     def _copy_chunk(self):
-        if self.result and self.result["chunks"]:
-            chunk = self.result["chunks"][self.current_chunk]
+        if self.chunks:
+            chunk = self.chunks[self.current_chunk]
             self.frame.clipboard_clear()
             self.frame.clipboard_append(chunk)
-            self.status_var.set(f"Chunk {self.current_chunk + 1} copied to clipboard.")
+            self.status_var.set(f"Part {self.current_chunk + 1} copied to clipboard.")
 
     def _save_text(self):
-        if not self.result:
+        if not self.full_text:
             return
 
         from audio_transcriber import save_transcription
@@ -436,9 +484,10 @@ class AudioTranscriberTab:
         if not path:
             return
 
-        saved = save_transcription(self.result, path, self.split_var.get())
+        chunks_to_save = self.chunks if len(self.chunks) > 1 else None
+        saved = save_transcription(self.full_text, path, chunks_to_save)
         self.status_var.set(f"Saved {len(saved)} file(s)")
-        messagebox.showinfo("Saved", f"Saved to:\n" + "\n".join(saved))
+        messagebox.showinfo("Saved", "Saved to:\n" + "\n".join(saved))
 
 
 # ------------------------------------------------------------------ #
