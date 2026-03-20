@@ -90,11 +90,48 @@ async def _get_client(auth_path: Optional[str] = None):
 #  Sync wrapper functions                                             #
 # ------------------------------------------------------------------ #
 
+def get_storage_path() -> Path:
+    """Get the notebooklm storage state file path."""
+    import os
+    home = Path(os.environ.get("NOTEBOOKLM_HOME", Path.home() / ".notebooklm"))
+    return home / "storage_state.json"
+
+
 def login():
-    """Run the browser login flow (blocking, opens browser)."""
-    import subprocess
-    import sys
-    subprocess.run([sys.executable, "-m", "notebooklm", "login"], check=True)
+    """Run the browser login flow (blocking, opens Playwright browser)."""
+    from playwright.sync_api import sync_playwright
+
+    storage_path = get_storage_path()
+    storage_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        context = browser.new_context()
+        page = context.new_page()
+        page.goto("https://notebooklm.google.com/")
+
+        # Wait for user to log in — detect by checking for the main app to load
+        # The URL will stay on notebooklm.google.com after login
+        try:
+            page.wait_for_url("**/notebooklm.google.com/**", timeout=300000)
+            # Wait for the page to fully load (notebooks visible)
+            page.wait_for_timeout(3000)
+            # Check if we're past the login screen
+            for _ in range(60):
+                if "accounts.google.com" not in page.url:
+                    # Give extra time for cookies to settle
+                    page.wait_for_timeout(2000)
+                    break
+                page.wait_for_timeout(5000)
+        except Exception:
+            pass
+
+        # Save browser state (cookies)
+        context.storage_state(path=str(storage_path))
+        browser.close()
+
+    if not storage_path.exists():
+        raise FileNotFoundError(f"Login failed — storage file not created at {storage_path}")
 
 
 def list_notebooks(auth_path=None):

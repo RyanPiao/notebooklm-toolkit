@@ -422,20 +422,30 @@ class NotebookLMTab:
     # ------------------------------------------------------------ #
 
     def _login(self):
-        self.status_var.set("Opening browser for Google login...")
+        self.status_var.set("Opening browser — log in to Google, then wait...")
+
         def _do():
             import notebooklm_wrapper as w
             w.login()
+            return True
 
         def _done(result):
             self.auth_status.set("Authenticated")
-            self.status_var.set("Login successful. Click 'List' to load notebooks.")
+            self.status_var.set("Login successful! Click 'List' to load notebooks.")
 
         def _err(e):
-            self.status_var.set(f"Login failed: {e}")
-            messagebox.showerror("Login Error", str(e))
+            err_msg = str(e)
+            self.status_var.set(f"Login failed: {err_msg}")
+            # Suggest manual fallback
+            messagebox.showerror(
+                "Login Error",
+                f"{err_msg}\n\n"
+                "If this keeps failing, run this in your terminal:\n"
+                "  notebooklm login\n\n"
+                "Then click 'List' in the app."
+            )
 
-        _run_async(self.frame, lambda: _do(), on_done=_done, on_error=_err)
+        _run_async(self.frame, _do, on_done=_done, on_error=_err)
 
     def _refresh_all(self):
         self._list_notebooks()
