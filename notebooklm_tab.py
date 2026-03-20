@@ -221,7 +221,7 @@ class NotebookLMTab:
 
         # Sources section
         src_frame = ttk.LabelFrame(left, text="Sources", padding=5)
-        src_frame.pack(fill="both", expand=True, pady=(8, 0))
+        src_frame.pack(fill="x", pady=(8, 0))
 
         src_btn_row = ttk.Frame(src_frame)
         src_btn_row.pack(fill="x")
@@ -231,7 +231,7 @@ class NotebookLMTab:
         ttk.Button(src_btn_row, text="Delete", command=self._delete_source, width=6).pack(side="left", padx=2)
 
         self.src_listbox = tk.Listbox(src_frame, height=4, exportselection=False)
-        self.src_listbox.pack(fill="both", expand=True, pady=(5, 0))
+        self.src_listbox.pack(fill="x", pady=(5, 0))
 
         # Artifacts section
         art_frame = ttk.LabelFrame(left, text="Generated Artifacts", padding=5)
@@ -1004,8 +1004,8 @@ class NotebookLMTab:
             messagebox.showwarning("Not audio", "Select an audio artifact to play.")
             return
 
-        # Save current position before switching
-        self._save_current_position()
+        # Stop current playback and save position before switching
+        self._stop_audio()
 
         safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in artifact.title)
         raw_path = self._speed_cache_dir / f"{artifact.id}_{safe_title}.raw"
