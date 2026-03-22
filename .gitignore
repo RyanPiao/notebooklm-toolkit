@@ -25,6 +25,11 @@ output/
 
 # User data
 saved_prompts.json
+playback_state.json
 
 # Large binaries
 *.exe
+
+# Package build
+*.egg-info/
+src/*.egg-info/

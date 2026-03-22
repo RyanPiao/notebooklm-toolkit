@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "notebooklm-toolkit"
+version = "2.0.0"
+description = "Web-based toolkit for Google NotebookLM — transcribe audio, clean PDFs, manage notebooks"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+authors = [{name = "RyanPiao"}]
+
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "python-multipart>=0.0.6",
+    "faster-whisper>=1.0.0",
+    "pymupdf>=1.20.0",
+    "Pillow>=10.0.0",
+    "opencv-python-headless>=4.8.0",
+    "numpy>=1.24.0",
+]
+
+[project.optional-dependencies]
+gpu = ["torch", "torchvision", "torchaudio"]
+nlm = ["notebooklm-py[browser]>=0.3.4"]
+all = ["notebooklm-toolkit[gpu,nlm]"]
+
+[project.scripts]
+notebooklm-toolkit = "notebooklm_toolkit:main"
+
+[project.urls]
+Homepage = "https://github.com/RyanPiao/notebooklm-toolkit"
+Repository = "https://github.com/RyanPiao/notebooklm-toolkit"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+notebooklm_toolkit = ["static/**/*"]

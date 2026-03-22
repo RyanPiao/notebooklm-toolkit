@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NotebookLM Toolkit</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="header">
+    <div class="header-left">
+      <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M4 19.5A2.5 2.5 0 016.5 17H20"/>
+        <path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/>
+      </svg>
+      <h1>NotebookLM Toolkit</h1>
+    </div>
+    <div class="header-right">
+      <button class="btn btn-ghost btn-sm" onclick="checkHealth()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+        Status
+      </button>
+    </div>
+  </header>
+
+  <!-- Health Banner (hidden by default) -->
+  <div id="health-banner" class="health-banner hidden"></div>
+
+  <!-- Tab Navigation -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="nlm">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M9 3v18"/><path d="M13 8h5"/><path d="M13 12h5"/><path d="M13 16h5"/>
+      </svg>
+      NotebookLM
+    </button>
+    <button class="tab-btn" data-tab="transcriber">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+        <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
+        <path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/>
+        <line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+      Audio Transcriber
+    </button>
+    <button class="tab-btn" data-tab="pdf">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+        <polyline points="14,2 14,8 20,8"/>
+      </svg>
+      PDF Cleaner
+    </button>
+  </nav>
+
+  <!-- Tab Panels -->
+  <main class="main">
+
+    <!-- ============== NotebookLM Tab ============== -->
+    <div id="tab-nlm" class="tab-panel active">
+      <!-- Auth Bar -->
+      <div class="card auth-card">
+        <div class="auth-row">
+          <button class="btn btn-primary" onclick="nlmLogin()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+              <path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4"/>
+              <polyline points="10,17 15,12 10,7"/><line x1="15" y1="12" x2="3" y2="12"/>
+            </svg>
+            Login (Browser)
+          </button>
+          <span id="nlm-auth-status" class="auth-status">Not authenticated</span>
+          <button class="btn btn-ghost btn-sm" onclick="nlmRefresh()" style="margin-left:auto">Refresh All</button>
+        </div>
+      </div>
+
+      <div class="nlm-layout">
+        <!-- Left: Notebooks & Sources -->
+        <div class="nlm-sidebar">
+          <!-- Notebooks -->
+          <div class="card">
+            <div class="card-header">
+              <h3>Notebooks</h3>
+              <div class="btn-group">
+                <button class="btn btn-sm" onclick="nlmListNotebooks()">List</button>
+                <button class="btn btn-sm" onclick="nlmCreateNotebook()">Create</button>
+                <button class="btn btn-sm btn-danger" onclick="nlmDeleteNotebook()">Delete</button>
+              </div>
+            </div>
+            <select id="nlm-notebooks" class="listbox" size="5" onchange="nlmSelectNotebook()"></select>
+          </div>
+
+          <!-- Sources -->
+          <div class="card">
+            <div class="card-header">
+              <h3>Sources</h3>
+              <div class="btn-group">
+                <button class="btn btn-sm" onclick="nlmAddSourceUrl()">URL</button>
+                <button class="btn btn-sm" onclick="nlmAddSourceFile()">File</button>
+                <button class="btn btn-sm" onclick="nlmAddSourceText()">Text</button>
+                <button class="btn btn-sm btn-danger" onclick="nlmDeleteSource()">Delete</button>
+              </div>
+            </div>
+            <select id="nlm-sources" class="listbox" size="4" multiple></select>
+          </div>
+
+          <!-- Artifacts -->
+          <div class="card">
+            <div class="card-header">
+              <h3>Artifacts</h3>
+              <div class="btn-group">
+                <button class="btn btn-sm" onclick="nlmListArtifacts()">Refresh</button>
+                <button class="btn btn-sm" onclick="nlmDownloadArtifact()">Download</button>
+                <button class="btn btn-sm btn-danger" onclick="nlmDeleteArtifact()">Delete</button>
+              </div>
+            </div>
+            <select id="nlm-artifacts" class="listbox" size="5"></select>
+          </div>
+        </div>
+
+        <!-- Right: Generate & Chat -->
+        <div class="nlm-main">
+          <!-- Sub-tabs -->
+          <div class="sub-tab-nav">
+            <button class="sub-tab-btn active" data-subtab="generate">Generate</button>
+            <button class="sub-tab-btn" data-subtab="chat">Chat</button>
+          </div>
+
+          <!-- Generate Panel -->
+          <div id="subtab-generate" class="sub-tab-panel active">
+            <div class="card">
+              <div class="form-row">
+                <label>Artifact Type</label>
+                <select id="gen-type" onchange="onArtifactTypeChange()">
+                  <option value="">Select type...</option>
+                  <option value="audio">Audio Overview</option>
+                  <option value="video">Video</option>
+                  <option value="report">Report</option>
+                  <option value="quiz">Quiz</option>
+                  <option value="flashcards">Flashcards</option>
+                  <option value="infographic">Infographic</option>
+                  <option value="slide_deck">Slide Deck</option>
+                  <option value="data_table">Data Table</option>
+                  <option value="mind_map">Mind Map</option>
+                </select>
+                <label style="margin-left:16px">Language</label>
+                <input type="text" id="gen-language" value="en" style="width:60px">
+              </div>
+
+              <!-- Dynamic Parameters -->
+              <div id="gen-params" class="form-row"></div>
+
+              <!-- Prompt -->
+              <div class="form-row" style="flex-direction:column;align-items:stretch">
+                <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+                  <label style="margin:0">Instructions / Prompt</label>
+                  <select id="prompt-select" style="flex:1;max-width:200px" onchange="loadPrompt()">
+                    <option value="">Saved prompts...</option>
+                  </select>
+                  <button class="btn btn-sm" onclick="savePrompt()">Save</button>
+                  <button class="btn btn-sm btn-danger" onclick="deletePrompt()">Delete</button>
+                </div>
+                <textarea id="gen-instructions" rows="4" placeholder="Optional instructions for generation..."></textarea>
+              </div>
+
+              <button class="btn btn-primary btn-lg" onclick="nlmGenerate()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+                  <polygon points="5,3 19,12 5,21"/>
+                </svg>
+                Generate
+              </button>
+            </div>
+          </div>
+
+          <!-- Chat Panel -->
+          <div id="subtab-chat" class="sub-tab-panel">
+            <div class="card" style="display:flex;flex-direction:column;height:100%">
+              <div class="form-row" style="margin-bottom:8px">
+                <label>Mode</label>
+                <select id="chat-mode">
+                  <option value="default">Default</option>
+                  <option value="learning_guide">Learning Guide</option>
+                  <option value="concise">Concise</option>
+                  <option value="detailed">Detailed</option>
+                </select>
+                <button class="btn btn-sm" onclick="nlmSetChatMode()">Set Mode</button>
+              </div>
+              <div id="chat-messages" class="chat-messages"></div>
+              <div class="chat-input-row">
+                <input type="text" id="chat-input" placeholder="Ask a question about your sources..."
+                       onkeydown="if(event.key==='Enter')nlmSendChat()">
+                <button class="btn btn-primary" onclick="nlmSendChat()">Send</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- NLM Status -->
+      <div id="nlm-status" class="status-bar">Login to get started.</div>
+    </div>
+
+    <!-- ============== Audio Transcriber Tab ============== -->
+    <div id="tab-transcriber" class="tab-panel">
+      <div class="card">
+        <h3>Upload Audio</h3>
+        <div class="upload-zone" id="audio-upload-zone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-lg">
+            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+            <polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <p>Drop audio file here or click to browse</p>
+          <p class="hint">Supports: .m4a, .mp3, .wav, .flac, .ogg, .webm</p>
+          <input type="file" id="audio-file-input" accept=".m4a,.mp3,.wav,.flac,.ogg,.webm" hidden>
+        </div>
+        <div id="audio-file-info" class="file-info hidden"></div>
+      </div>
+
+      <div class="card">
+        <h3>Settings</h3>
+        <div class="form-row">
+          <label>Model</label>
+          <select id="whisper-model">
+            <option value="tiny">tiny (fastest)</option>
+            <option value="base">base</option>
+            <option value="small" selected>small (recommended)</option>
+            <option value="medium">medium</option>
+            <option value="large-v3">large-v3 (most accurate)</option>
+          </select>
+          <label style="margin-left:16px">Language</label>
+          <input type="text" id="whisper-language" value="en" style="width:60px">
+        </div>
+        <button class="btn btn-primary btn-lg" id="transcribe-btn" onclick="startTranscription()" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+            <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
+            <path d="M19 10v2a7 7 0 01-14 0v-2"/>
+          </svg>
+          Transcribe
+        </button>
+        <div id="transcribe-status" class="status-text"></div>
+        <div class="progress-bar hidden" id="transcribe-progress">
+          <div class="progress-fill indeterminate"></div>
+        </div>
+      </div>
+
+      <!-- Split Controls -->
+      <div class="card" id="split-card" style="display:none">
+        <h3>Split Text</h3>
+        <div class="form-row">
+          <label>Parts</label>
+          <input type="number" id="split-parts" value="1" min="1" max="50" style="width:70px">
+          <label style="margin-left:16px">Overlap (chars)</label>
+          <input type="number" id="split-overlap" value="500" min="0" max="5000" step="100" style="width:90px">
+          <button class="btn btn-sm" onclick="applySplit()">Apply Split</button>
+        </div>
+        <div id="split-info" class="hint"></div>
+      </div>
+
+      <!-- Output -->
+      <div class="card" id="transcript-card" style="display:none">
+        <div class="transcript-header">
+          <div class="chunk-nav">
+            <button class="btn btn-sm" id="prev-chunk-btn" onclick="prevChunk()" disabled>&lt; Prev</button>
+            <span id="chunk-label"></span>
+            <button class="btn btn-sm" id="next-chunk-btn" onclick="nextChunk()" disabled>Next &gt;</button>
+          </div>
+          <div class="btn-group">
+            <button class="btn btn-sm" onclick="copyChunk()">Copy Chunk</button>
+            <button class="btn btn-sm" onclick="copyAll()">Copy All</button>
+          </div>
+        </div>
+        <textarea id="transcript-output" rows="14" readonly></textarea>
+      </div>
+    </div>
+
+    <!-- ============== PDF Cleaner Tab ============== -->
+    <div id="tab-pdf" class="tab-panel">
+      <div class="card">
+        <h3>Upload PDFs</h3>
+        <div class="upload-zone" id="pdf-upload-zone">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-lg">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14,2 14,8 20,8"/>
+          </svg>
+          <p>Drop PDF files here or click to browse</p>
+          <input type="file" id="pdf-file-input" accept=".pdf" multiple hidden>
+        </div>
+        <div id="pdf-file-list" class="file-list"></div>
+      </div>
+
+      <div class="card">
+        <h3>Settings</h3>
+        <div class="form-row">
+          <label>Resolution</label>
+          <select id="pdf-resolution">
+            <option value="1920">1920 (HD)</option>
+            <option value="2560">2560 (QHD)</option>
+            <option value="3840" selected>3840 (4K)</option>
+            <option value="5120">5120 (5K)</option>
+          </select>
+          <label style="margin-left:16px">Supersample</label>
+          <select id="pdf-supersample">
+            <option value="1">1x</option>
+            <option value="2" selected>2x</option>
+            <option value="3">3x</option>
+          </select>
+          <label style="margin-left:16px">Sharpness</label>
+          <input type="number" id="pdf-sharpness" value="1.3" min="0.5" max="3.0" step="0.1" style="width:70px">
+        </div>
+        <button class="btn btn-primary btn-lg" id="pdf-process-btn" onclick="startPdfProcess()" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="icon-sm">
+            <polygon points="5,3 19,12 5,21"/>
+          </svg>
+          Start Processing
+        </button>
+      </div>
+
+      <div class="card" id="pdf-progress-card" style="display:none">
+        <h3>Progress</h3>
+        <div class="progress-bar" id="pdf-progress">
+          <div class="progress-fill" id="pdf-progress-fill" style="width:0%"></div>
+        </div>
+        <div id="pdf-status" class="status-text"></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Toast container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- Hidden file input for NLM source upload -->
+  <input type="file" id="nlm-file-input" accept=".pdf,.docx,.md,.csv,.txt" hidden>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
