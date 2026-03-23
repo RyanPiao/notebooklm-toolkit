@@ -61,7 +61,7 @@ playwright install chromium
 ### Everything at once
 
 ```bash
-pip install notebooklm-toolkit[all]
+pip install "notebooklm-toolkit[all]"
 playwright install chromium
 ```
 
