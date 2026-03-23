@@ -54,7 +54,7 @@ pip install torch torchvision torchaudio
 ### NotebookLM integration
 
 ```bash
-pip install notebooklm-toolkit[nlm]
+pip install "notebooklm-toolkit[nlm]"
 playwright install chromium
 ```
 
