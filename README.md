@@ -26,13 +26,10 @@ Opens in your browser at http://localhost:8000.
 ```bash
 git clone https://github.com/RyanPiao/notebooklm-toolkit.git
 cd notebooklm-toolkit
-pip install -e .
-notebooklm-toolkit
-
-or Mac
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e .
+pip install -e .
+notebooklm-toolkit
 ```
 
 ### Option 3: Docker
