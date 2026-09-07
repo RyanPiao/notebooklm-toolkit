@@ -124,9 +124,19 @@ if [[ "$PHASE" -lt 3 ]]; then
 
   for i in 1 2 3; do
     PART_FILE="$FOLDER/media/podcast_transcript_00${i}.txt"
-    echo "  Uploading Part $i → $(basename $PART_FILE)"
-    SRC_ID=$(notebooklm source add "$PART_FILE" --json -n "$NB" 2>&1 \
-      | python3 -c "import sys,json; print(json.load(sys.stdin)['source']['id'])")
+    echo "  Uploading Part $i → $(basename "$PART_FILE")"
+    # 2>/dev/null, NOT 2>&1: the 0.8.2 CLI writes log lines to stderr, and merging
+    # them into stdout makes json.load choke on "Expecting value: line 1 column 1".
+    SRC_RAW=$(notebooklm source add "$PART_FILE" --json -n "$NB" 2>/dev/null)
+    SRC_ID=$(printf '%s' "$SRC_RAW" \
+      | python3 -c "import sys,json
+try: print(json.load(sys.stdin)['source']['id'])
+except Exception: print('')")
+    if [[ -z "$SRC_ID" ]]; then
+      echo "❌ source add did not return an id for Part $i"
+      echo "   raw: $(printf '%s' "$SRC_RAW" | head -c 300)"
+      exit 1
+    fi
     SRC_IDS+=("$SRC_ID")
 
     echo "  Waiting for indexing..."
