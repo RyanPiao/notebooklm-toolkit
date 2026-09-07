@@ -22,8 +22,22 @@ done < <(python3 -c "
 import json;print('\n'.join(json.load(open('$STATE'))['source_ids']))")
 [[ ${#SRCS[@]} -eq 3 ]] || { echo "❌ expected 3 transcript source_ids, got ${#SRCS[@]}"; exit 1; }
 
+# Preserve decks that already succeeded: a partial failure like
+# ["abc123","FAILED","FAILED"] should cost 2 requests, not 3. Quota is scarce.
+EXISTING=()
+while IFS= read -r _e; do EXISTING+=("$_e"); done < <(python3 -c "
+import json
+v=json.load(open('$STATE')).get('slide_artifact_ids') or ['FAILED']*3
+print('\n'.join(v))")
+
 IDS=()
 for i in 1 2 3; do
+  PREV="${EXISTING[$((i-1))]:-FAILED}"
+  if [[ -n "$PREV" && "$PREV" != "FAILED" ]]; then
+    echo "  part $i: keeping existing deck ${PREV:0:8}"
+    IDS+=("$PREV")
+    continue
+  fi
   PART="$FOLDER/media/podcast_transcript_00${i}.txt"
   [[ -f "$PART" ]] || { echo "❌ missing $PART"; exit 1; }
   PROMPT=$(python3 "$TOOLKIT/build_slide_prompt.py" "$PART" "$FOLDER" "$i" 2>/dev/null) \
@@ -48,6 +62,7 @@ except Exception: print('')")
   echo "     -> $ID"
   IDS+=("$ID")
   [[ $i -lt 3 ]] && sleep "$GAP"
+  true
 done
 
 python3 - "$STATE" "${IDS[@]}" <<'PY'
